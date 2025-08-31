@@ -1,0 +1,8 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+    
+    <ItemGroup>
+      <Folder Include="D3D12\" />
+      <Folder Include="Vulkan\" />
+    </ItemGroup>
+    
+</Project>

@@ -1,0 +1,12 @@
+﻿{
+  "$schema": "https://aka.ms/CsWin32.schema.json",
+  "comInterop": {"preserveSigMethods": [], "useIntPtrForComOutPointers": true},
+  "allowMarshaling": true,
+  "friendlyOverloads": {"enabled": true},
+  "multiTargetingFriendlyAPIs": false,
+  "useSafeHandles": true,
+  "wideCharOnly": true,
+  "emitSingleFile": false,
+  "className": "PInvoke",
+  "public": true
+}
