@@ -1,9 +1,14 @@
-﻿using Engine.Abstractions;
-using Engine.Abstractions.Graphics;
+﻿using Engine.Core;
 
 namespace Engine.Graphics.D3D11;
 
-public class Renderer : EngineModule, IRenderer
+public interface IRenderer
+{
+    static IRenderer Create() => new Renderer();
+    
+}
+
+internal class Renderer : EngineModule, IRenderer
 {
     public override void Initialize()
     {

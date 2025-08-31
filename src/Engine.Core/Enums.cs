@@ -1,6 +1,6 @@
 ﻿using System;
 
-namespace Engine.Abstractions;
+namespace Engine.Core;
 
 public enum RuntimeMode
 {
@@ -31,4 +31,16 @@ public enum RenderControlType
     Resize /*, 
     ToggleVsync, 
     ToggleFullscreen, ...*/ 
+}
+
+[Flags]
+public enum PhaseMask
+{
+    None=0, 
+    Init=1, 
+    Start=2, 
+    Fixed=4, 
+    Update=8, 
+    Late=16, 
+    Shutdown=32
 }

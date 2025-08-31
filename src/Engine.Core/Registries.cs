@@ -4,12 +4,21 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Threading;
-using Engine.Abstractions;
-using Engine.Abstractions.Graphics;
 
-namespace Engine.Runtime;
+namespace Engine.Core;
 
-public sealed class Registry : IRegistry
+public interface IRegistry
+{
+    bool Add<T>(T service) where T : class => false;
+    void Replace<T>(T service) where T : class { }
+    bool Remove<T>() where T : class => false;
+    T Get<T>() where T : class => null!;
+    bool TryGet<T>(out T? service) where T : class { service = null; return false; }
+
+    static IRegistry Create() => new Registry();
+}
+
+internal sealed class Registry : IRegistry
 {
     private readonly ConcurrentDictionary<Type, object> _map = new();
     
@@ -20,7 +29,21 @@ public sealed class Registry : IRegistry
     [MethodImpl(MethodImplOptions.AggressiveInlining)] public bool TryGet<T>(out T? service) where T : class { if (_map.TryGetValue(typeof(T), out var obj) && obj is T t) { service = t; return true; } service = null; return false; }
 }
 
-public sealed class RenderProxyRegistry : IRenderProxyRegistry
+public interface IRenderProxyRegistry
+{
+    void Add(RenderProxy proxy);
+    bool Remove(RenderProxy proxy);
+
+    /// <summary>Monotonic version; increments on add/remove.</summary>
+    int Version { get; }
+
+    /// <summary>Thread-safe snapshot of current proxies.</summary>
+    IReadOnlyList<RenderProxy> Snapshot();
+    
+    static IRenderProxyRegistry Create() => new RenderProxyRegistry();
+}
+
+internal sealed class RenderProxyRegistry : IRenderProxyRegistry
 {
     private readonly ConcurrentDictionary<RenderProxy, byte> _proxies = new();
     private int _version;

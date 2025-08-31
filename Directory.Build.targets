@@ -4,7 +4,7 @@
         <_Src>$(_Root)src\</_Src> 
         <_Tools>$(_Root)tools\</_Tools>
         <_Editor_Application>$(_Src)Editor.Application\Editor.Application.csproj</_Editor_Application>
-        <_Engine_Abstractions>$(_Src)Engine.Abstractions\Engine.Abstractions.csproj</_Engine_Abstractions>
+        <_Engine_Core>$(_Src)Engine.Core\Engine.Core.csproj</_Engine_Core>
         <_Engine_Graphics>$(_Src)Engine.Graphics\Engine.Graphics.csproj</_Engine_Graphics>
         <_Engine_Interop>$(_Src)Engine.Interop\Engine.Interop.csproj</_Engine_Interop>
         <_Engine_Mathematics>$(_Src)Engine.Mathematics\Engine.Mathematics.csproj</_Engine_Mathematics>
@@ -17,25 +17,23 @@
     
     <!-- Editor.Application -->
     <ItemGroup Condition="'$(MSBuildProjectName)' == 'Editor.Application' and Exists('$(_Editor_Application)')">
-        <ProjectReference Include="$(_Engine_Abstractions)" />
         <ProjectReference Include="$(_Engine_Mathematics)" />
         <ProjectReference Include="$(_Engine_Runtime)" />
     </ItemGroup>
-
-    <!-- Engine.Abstractions -->
-    <ItemGroup Condition="'$(MSBuildProjectName)' == 'Engine.Abstractions' and Exists('$(_Engine_Abstractions)')">
+    
+    <!-- Engine.Core -->
+    <ItemGroup Condition="'$(MSBuildProjectName)' == 'Engine.Core' and Exists('$(_Engine_Core)')">
         <ProjectReference Include="$(_Engine_Mathematics)" />
     </ItemGroup>
-
+    
     <!-- Engine.Graphics -->
     <ItemGroup Condition="'$(MSBuildProjectName)' == 'Engine.Graphics' and Exists('$(_Engine_Graphics)')">
-        <ProjectReference Include="$(_Engine_Abstractions)" />
+        <ProjectReference Include="$(_Engine_Core)" />
         <ProjectReference Include="$(_Engine_Mathematics)" />
     </ItemGroup>
     
     <!-- Engine.Interop -->
     <ItemGroup Condition="'$(MSBuildProjectName)' == 'Engine.Interop' and Exists('$(_Engine_Interop)')">
-        <ProjectReference Include="$(_Engine_Abstractions)" />
         <ProjectReference Include="$(_Engine_Mathematics)" />
         <PackageReference Include="Microsoft.Windows.SDK.Win32Metadata" Version="61.0.15-preview" />
         <PackageReference Include="Microsoft.Windows.CsWin32" Version="0.3.183">
@@ -51,32 +49,29 @@
     
     <!-- Engine.Networking -->
     <ItemGroup Condition="'$(MSBuildProjectName)' == 'Engine.Networking' and Exists('$(_Engine_Networking)')">
-        <ProjectReference Include="$(_Engine_Abstractions)" />
         <ProjectReference Include="$(_Engine_Mathematics)" />
     </ItemGroup>
     
     <!-- Engine.Physics -->
     <ItemGroup Condition="'$(MSBuildProjectName)' == 'Engine.Physics' and Exists('$(_Engine_Physics)')">
-        <ProjectReference Include="$(_Engine_Abstractions)" />
         <ProjectReference Include="$(_Engine_Mathematics)" />
     </ItemGroup>
 
     <!-- Engine.Platform -->
     <ItemGroup Condition="'$(MSBuildProjectName)' == 'Engine.Platform' and Exists('$(_Engine_Platform)')">
+        <ProjectReference Include="$(_Engine_Core)" />
         <ProjectReference Include="$(_Engine_Interop)" />
-        <ProjectReference Include="$(_Engine_Abstractions)" />
         <ProjectReference Include="$(_Engine_Mathematics)" />
     </ItemGroup>
     
     <!-- Engine.Resources -->
     <ItemGroup Condition="'$(MSBuildProjectName)' == 'Engine.Resources' and Exists('$(_Engine_Resources)')">
-        <ProjectReference Include="$(_Engine_Abstractions)" />
         <ProjectReference Include="$(_Engine_Mathematics)" />
     </ItemGroup>
 
     <!-- Engine.Runtime -->
     <ItemGroup Condition="'$(MSBuildProjectName)' == 'Engine.Runtime' and Exists('$(_Engine_Runtime)')">
-        <ProjectReference Include="$(_Engine_Abstractions)" />
+        <ProjectReference Include="$(_Engine_Core)" />
         <ProjectReference Include="$(_Engine_Mathematics)" />
     </ItemGroup>
     

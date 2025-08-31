@@ -2,7 +2,7 @@
 using System.Runtime.CompilerServices;
 using System.Threading;
 
-namespace Engine.Abstractions;
+namespace Engine.Core;
 
 /// Frame boundary info from Main → Game
 public readonly record struct FrameStart(long FrameId, float Dt);

@@ -1,8 +1,7 @@
 ﻿using System;
 using System.Diagnostics;
 using System.Threading;
-using Engine.Abstractions;
-using Engine.Abstractions.Graphics;
+using Engine.Core;
 
 namespace Engine.Runtime;
 
@@ -17,12 +16,13 @@ public abstract class Runtime : IDisposable
     protected virtual int InputPipeCapacity => 256;
     
     protected CancellationTokenSource Cts { get; } = new();
-    protected IRegistry Registry { get; } = new Registry();
-
-    protected IEngineKernel MainKernel { get; } = new EngineKernel();
-    protected IEngineKernel GameKernel { get; } = new EngineKernel();
-    protected IEngineKernel RenderKernel { get; } = new EngineKernel();
-
+    
+    protected static IRegistry Registry { get; } = IRegistry.Create();
+    
+    protected IEngineKernel MainKernel { get; } = IEngineKernel.Create(Registry);
+    protected IEngineKernel GameKernel { get; } = IEngineKernel.Create(Registry);
+    protected IEngineKernel RenderKernel { get; } = IEngineKernel.Create(Registry);
+    
     protected abstract RuntimeThreads ActiveThreads { get; }
     
     /// Module setup hooks
@@ -55,15 +55,11 @@ public abstract class Runtime : IDisposable
             RenderCommands = ctrlPort
         };
         
-        var mainContext   = new EngineContext { Registry = Registry };
-        var gameContext   = new EngineContext { Registry = Registry };
-        var renderContext = new EngineContext { Registry = Registry };
-        
         Registry.Add(channels);
         Registry.Add<IMainChannels>(new MainChannelsView(channels));
         Registry.Add<IGameChannels>(new GameChannelsView(channels));
         Registry.Add<IRenderChannels>(new RenderChannelsView(channels));
-        Registry.Add<IRenderProxyRegistry>(new RenderProxyRegistry());
+        Registry.Add(IRenderProxyRegistry.Create());
         
         SetupMainModules(MainKernel, Registry);
         SetupGameModules(GameKernel, Registry);
@@ -76,7 +72,7 @@ public abstract class Runtime : IDisposable
         
         if (ActiveThreads.HasFlag(RuntimeThreads.Render))
         {
-            renderThread = new Thread(() => RenderLoop(RenderKernel, ref renderContext, Registry, ct))
+            renderThread = new Thread(() => RenderLoop(RenderKernel, ct))
             {
                 Name = "Render", 
                 IsBackground = true
@@ -86,7 +82,7 @@ public abstract class Runtime : IDisposable
 
         if (ActiveThreads.HasFlag(RuntimeThreads.Game))
         {
-            gameThread = new Thread(() => GameLoop(GameKernel, ref gameContext, Registry, FixedDt, MaxFrameDt, MaxFixedStepsPerFrame, ct))
+            gameThread = new Thread(() => GameLoop(GameKernel, FixedDt, MaxFrameDt, MaxFixedStepsPerFrame, ct))
             {
                 Name = "Game", 
                 IsBackground = true
@@ -98,8 +94,8 @@ public abstract class Runtime : IDisposable
         {
             try
             {
-                MainKernel.Initialize(mainContext);
-                MainKernel.Start(mainContext);
+                MainKernel.Initialize();
+                MainKernel.Start();
 
                 var sw = Stopwatch.StartNew();
                 long frameId = 0;
@@ -109,8 +105,8 @@ public abstract class Runtime : IDisposable
                 
                 while (!ct.IsCancellationRequested)
                 {
-                    MainKernel.Update(mainContext);
-                    MainKernel.LateUpdate(mainContext);
+                    MainKernel.Update();
+                    MainKernel.LateUpdate();
 
                     var now = sw.Elapsed.TotalSeconds;
                     var raw = (float)(now - last);
@@ -129,24 +125,25 @@ public abstract class Runtime : IDisposable
                 try { gameThread?.Join();   } catch { /* ignore */ }
                 try { renderThread?.Join(); } catch { /* ignore */ }
 
-                try { RenderKernel.Shutdown(renderContext); } catch { /* ignore */ }
-                try { GameKernel.Shutdown(gameContext);     } catch { /* ignore */ }
-                try { MainKernel.Shutdown(mainContext);     } catch { /* ignore */ }
+                try { RenderKernel.Shutdown(); } catch { /* ignore */ }
+                try { GameKernel.Shutdown();     } catch { /* ignore */ }
+                try { MainKernel.Shutdown();     } catch { /* ignore */ }
             }
         }
     }
     
-    private static void GameLoop(IEngineKernel kernel, ref EngineContext context, IRegistry registry, float fixedDt, float maxFrameDt, int maxStepsPerFrame, CancellationToken ct)
+    private static void GameLoop(IEngineKernel kernel, float fixedDt, float maxFrameDt, int maxStepsPerFrame, CancellationToken ct)
     {
         try
         {
-            kernel.Initialize(context);
-            kernel.Start(context);
+            kernel.Initialize();
+            kernel.Start();
 
             float accumulator = 0f;
             int simFrame = 0;
             
-            var channel = registry.Get<IGameChannels>();
+            var context = kernel.Context;
+            var channel = context.Registry.Get<IGameChannels>();
             
             while (!ct.IsCancellationRequested)
             {
@@ -160,7 +157,7 @@ public abstract class Runtime : IDisposable
                 while (accumulator >= fixedDt && steps < maxStepsPerFrame)
                 {
                     context.DeltaTime = fixedDt;
-                    kernel.FixedUpdate(context);
+                    kernel.FixedUpdate();
                     accumulator -= fixedDt;
                     simFrame++;
                     steps++;
@@ -168,8 +165,8 @@ public abstract class Runtime : IDisposable
 
                 // Variable updates
                 context.DeltaTime = dt;
-                kernel.Update(context);
-                kernel.LateUpdate(context);
+                kernel.Update();
+                kernel.LateUpdate();
 
                 // Interpolation factor for renderer
                 channel.SceneWriter.Publish(new SceneView(simFrame, clamp(accumulator / fixedDt, 0f, 1f)));
@@ -178,18 +175,18 @@ public abstract class Runtime : IDisposable
         catch (OperationCanceledException) { /* normal shutdown */ }
         finally
         {
-            try { kernel.Shutdown(context); } catch { /* ignore */ }
+            try { kernel.Shutdown(); } catch { /* ignore */ }
         }
     }
 
-    private static void RenderLoop(IEngineKernel kernel, ref EngineContext context, IRegistry registry, CancellationToken ct)
+    private static void RenderLoop(IEngineKernel kernel, CancellationToken ct)
     {
         try
         {
-            kernel.Initialize(context);
-            kernel.Start(context);
+            kernel.Initialize();
+            kernel.Start();
             
-            var channel = registry.Get<IRenderChannels>();
+            var channel = kernel.Context.Registry.Get<IRenderChannels>();
 
             while (!ct.IsCancellationRequested)
             {
@@ -198,14 +195,14 @@ public abstract class Runtime : IDisposable
                 
                 // context.Channels.RenderCommands.Drain(rc => ApplyRenderControl(ref context, rc));
                 
-                kernel.Update(context);
-                kernel.LateUpdate(context);
+                kernel.Update();
+                kernel.LateUpdate();
             }
         }
         catch (OperationCanceledException) { /* normal shutdown */ }
         finally
         {
-            try { kernel.Shutdown(context); } catch { /* ignore */ }
+            try { kernel.Shutdown(); } catch { /* ignore */ }
         }
     }
     

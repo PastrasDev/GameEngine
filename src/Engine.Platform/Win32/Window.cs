@@ -1,11 +1,15 @@
-﻿using Engine.Abstractions;
-using Engine.Abstractions.Platform;
+﻿using Engine.Core;
 
 namespace Engine.Platform.Win32;
 
 using static Windows.Win32.PInvoke;
 
-public class Window : EngineModule, IWindow
+public interface IWindow
+{
+    static IWindow Create() => new Window();
+}
+
+internal class Window : EngineModule, IWindow
 {
     public override void Initialize()
     {

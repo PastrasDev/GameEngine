@@ -1,4 +1,4 @@
-﻿namespace Engine.Abstractions;
+﻿namespace Engine.Core;
 
 public interface ILifecycle
 {

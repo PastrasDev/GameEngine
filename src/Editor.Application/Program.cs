@@ -1,4 +1,4 @@
-﻿using Engine.Abstractions;
+﻿using Engine.Core;
 using Engine.Runtime;
 
 namespace Editor.Application;

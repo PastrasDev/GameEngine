@@ -1,6 +1,6 @@
 ﻿using System;
 
-namespace Engine.Abstractions;
+namespace Engine.Core;
 
 /// <summary>
 /// Base class for all engine modules. 
@@ -16,7 +16,7 @@ public abstract class EngineModule : ILifecycle
     /// Provides access to <see cref="IEngineContext.DeltaTime"/>, 
     /// the <see cref="IEngineContext.Registry"/>, and communication channels.
     /// </summary>
-    protected IEngineContext Context { get; private set; } = null!;
+    public IEngineContext Context { get; set; } = null!;
     
     /// <summary>
     /// Called by the kernel to associate this module with a runtime context. 

@@ -2,7 +2,7 @@
 using System.Collections.Concurrent;
 using System.Runtime.CompilerServices;
 using System.Threading;
-using Engine.Abstractions;
+using Engine.Core;
 
 namespace Engine.Runtime;
 
