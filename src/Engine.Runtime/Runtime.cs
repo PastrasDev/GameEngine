@@ -17,11 +17,11 @@ public abstract class Runtime : IDisposable
     
     protected CancellationTokenSource Cts { get; } = new();
     
-    protected static IRegistry Registry { get; } = IRegistry.Create();
+    protected static IRegistry Registry { get; } = IsNotNull(IRegistry.Create());
     
-    protected IEngineKernel MainKernel { get; } = IEngineKernel.Create(Registry);
-    protected IEngineKernel GameKernel { get; } = IEngineKernel.Create(Registry);
-    protected IEngineKernel RenderKernel { get; } = IEngineKernel.Create(Registry);
+    protected IEngineKernel MainKernel { get; } = IsNotNull(IEngineKernel.Create(Registry));
+    protected IEngineKernel GameKernel { get; } = IsNotNull(IEngineKernel.Create(Registry));
+    protected IEngineKernel RenderKernel { get; } = IsNotNull(IEngineKernel.Create(Registry));
     
     protected abstract RuntimeThreads ActiveThreads { get; }
     
@@ -35,31 +35,30 @@ public abstract class Runtime : IDisposable
 
     public virtual void Run()
     {
-        var frameRing = new SPSCRing<FrameStart>(FramePipeCapacity);
-        var framePort = new PipePort<FrameStart>(frameRing);
+        var frameRing = IsNotNull(new SPSCRing<FrameStart>(FramePipeCapacity));
+        var framePort = IsNotNull(new PipePort<FrameStart>(frameRing));
 
-        var inputRing = new SPSCRing<InputSnapshot>(InputPipeCapacity);
-        var inputPort = new PipePort<InputSnapshot>(inputRing);
+        var inputRing = IsNotNull(new SPSCRing<InputSnapshot>(InputPipeCapacity));
+        var inputPort = IsNotNull(new PipePort<InputSnapshot>(inputRing));
 
-        var viewSnap  = new Snapshot<SceneView>();
-        var viewPort  = new SnapshotPort<SceneView>(viewSnap);
+        var viewSnap  = IsNotNull(new Snapshot<SceneView>());
+        var viewPort  = IsNotNull(new SnapshotPort<SceneView>(viewSnap));
 
-        var ctrlBus   = new ControlQueue<RenderControl>(rc => (int)rc.Type, maxItems: 64);
-        var ctrlPort  = new RenderCommandBusPort(ctrlBus);
+        var ctrlBus   = IsNotNull(new ControlQueue<RenderControl>(rc => (int)rc.Type, maxItems: 64));
+        var ctrlPort  = IsNotNull(new RenderCommandBusPort(ctrlBus));
         
-        var channels = new EngineChannels
+        var channels = IsNotNull(new EngineChannels
         {
             Frame = new FrameChannel { Reader = framePort, Writer = framePort },
             Input = new InputChannel { Reader = inputPort, Writer = inputPort },
             Scene = new SceneChannel { Reader = viewPort,  Writer = viewPort  },
             RenderCommands = ctrlPort
-        };
+        });
         
         Registry.Add(channels);
-        Registry.Add<IMainChannels>(new MainChannelsView(channels));
-        Registry.Add<IGameChannels>(new GameChannelsView(channels));
-        Registry.Add<IRenderChannels>(new RenderChannelsView(channels));
-        Registry.Add(IRenderProxyRegistry.Create());
+        Registry.Add<IMainChannels>(IsNotNull(new MainChannelsView(channels)));
+        Registry.Add<IGameChannels>(IsNotNull(new GameChannelsView(channels)));
+        Registry.Add<IRenderChannels>(IsNotNull(new RenderChannelsView(channels)));
         
         SetupMainModules(MainKernel, Registry);
         SetupGameModules(GameKernel, Registry);
@@ -72,21 +71,21 @@ public abstract class Runtime : IDisposable
         
         if (ActiveThreads.HasFlag(RuntimeThreads.Render))
         {
-            renderThread = new Thread(() => RenderLoop(RenderKernel, ct))
+            renderThread = IsNotNull(new Thread(() => RenderLoop(RenderKernel, ct))
             {
                 Name = "Render", 
                 IsBackground = true
-            };
+            });
             renderThread.Start();
         }
 
         if (ActiveThreads.HasFlag(RuntimeThreads.Game))
         {
-            gameThread = new Thread(() => GameLoop(GameKernel, FixedDt, MaxFrameDt, MaxFixedStepsPerFrame, ct))
+            gameThread = IsNotNull(new Thread(() => GameLoop(GameKernel, FixedDt, MaxFrameDt, MaxFixedStepsPerFrame, ct))
             {
                 Name = "Game", 
                 IsBackground = true
-            };
+            });
             gameThread.Start();
         }
 
@@ -101,7 +100,7 @@ public abstract class Runtime : IDisposable
                 long frameId = 0;
                 double last  = 0;
 
-                var channel = Registry.Get<IMainChannels>();
+                var channel = IsNotNull(Registry.Get<IMainChannels>());
                 
                 while (!ct.IsCancellationRequested)
                 {
@@ -142,8 +141,8 @@ public abstract class Runtime : IDisposable
             float accumulator = 0f;
             int simFrame = 0;
             
-            var context = kernel.Context;
-            var channel = context.Registry.Get<IGameChannels>();
+            var context = IsNotNull(kernel.Context);
+            var channel = IsNotNull(context.Registry.Get<IGameChannels>());
             
             while (!ct.IsCancellationRequested)
             {

@@ -1,6 +1,6 @@
 ﻿<Project>
     <PropertyGroup>
-        <TargetFramework>net8.0-windows10.0.19041.0</TargetFramework>
+        <TargetFramework>net8.0-windows</TargetFramework>
         <PlatformTarget>x64</PlatformTarget>
         <LangVersion>preview</LangVersion>
         <Nullable>enable</Nullable>
@@ -14,6 +14,12 @@
         <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
         <EnablePreviewFeatures>true</EnablePreviewFeatures>
         <CheckForOverflowUnderflow>false</CheckForOverflowUnderflow>
+        
+        <_Root>$(MSBuildThisFileDirectory)</_Root>
+        <_Src>$(_Root)src\</_Src>
+        
+        <MathUsings Condition="'$(MathUsings)'==''">false</MathUsings>
+        <RequireUsings Condition="'$(RequireUsings)'==''">false</RequireUsings>
     </PropertyGroup>
     
     <PropertyGroup Condition="'$(Configuration)'=='Debug'"> 
@@ -26,21 +32,4 @@
         <Optimize>true</Optimize>
         <InvariantGlobalization>false</InvariantGlobalization> 
     </PropertyGroup>
-    
-    <PropertyGroup Condition="'$(MSBuildProjectName)' == 'Editor.Application' and Exists('$(_Editor_Application)')">
-        <OutputType>WinExe</OutputType>
-        <PublishTrimmed>false</PublishTrimmed>
-        <PublishAot>false</PublishAot>
-        <InvariantGlobalization>false</InvariantGlobalization>
-    </PropertyGroup>
-    
-    <ItemGroup>
-        <Using Include="Engine.Mathematics" />
-        <Using Include="Engine.Mathematics.Math" Static="True" />
-    </ItemGroup>
-
-    <ItemGroup Condition="Exists('$(MSBuildThisFileDirectory)GlobalAliases.cs')">
-        <Compile Include="$(MSBuildThisFileDirectory)GlobalAliases.cs" Link="GlobalAliases.cs" />
-    </ItemGroup>
-    
 </Project>

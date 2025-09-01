@@ -1,8 +1,10 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
-    
+    <PropertyGroup>
+        
+    </PropertyGroup>
     <ItemGroup>
-      <Folder Include="D3D12\" />
-      <Folder Include="Vulkan\" />
+        <ProjectReference Include="$(_Src)Engine.Core\Engine.Core.csproj" />
+        <Folder Include="D3D12\" />
+        <Folder Include="Vulkan\" />
     </ItemGroup>
-    
 </Project>

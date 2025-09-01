@@ -1,1 +1,10 @@
-﻿<Project Sdk="Microsoft.NET.Sdk" />
+﻿<Project Sdk="Microsoft.NET.Sdk">
+    <PropertyGroup>
+        
+    </PropertyGroup>
+    <ItemGroup>
+        <ProjectReference Include="$(_Src)Engine.Core\Engine.Core.csproj" />
+        <ProjectReference Include="$(_Src)Engine.Interop\Engine.Interop.csproj" />
+        <ProjectReference Include="$(_Src)Engine.Mathematics\Engine.Mathematics.csproj" />
+    </ItemGroup>
+</Project>
