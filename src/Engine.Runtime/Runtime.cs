@@ -1,5 +1,4 @@
 ﻿using System;
-using System.Diagnostics;
 using System.Threading;
 using Engine.Core;
 
@@ -7,17 +6,17 @@ namespace Engine.Runtime;
 
 public interface IRuntime : IDisposable
 {
-    void Run();
-    
-    static IRuntime Create(RuntimeMode mode, string[]? args)
+    static int Launch(RuntimeMode mode, string[]? args)
     {
-        return mode switch
+        using Runtime runtime = mode switch
         {
             RuntimeMode.Editor => new Editor(args),
             RuntimeMode.Game => new Game(args),
             RuntimeMode.None => throw new ArgumentException("Runtime mode not specified", nameof(mode)),
             _ => throw new ArgumentOutOfRangeException(nameof(mode), mode, null)
         };
+
+        return (int)runtime.Run();
     }
 }
 
@@ -26,8 +25,7 @@ internal abstract class Runtime : IRuntime
     protected const float _fixedDt = 1f / 120f;
     protected const float _maxFrameDt = 0.25f;
     protected const int _maxFixedStepsPerFrame = 8;
-
-    /// IPC capacities (power-of-two recommended for the ring)
+    
     protected const int _framePipeCapacity = 256;
     protected const int _inputPipeCapacity = 256;
 
@@ -44,8 +42,14 @@ internal abstract class Runtime : IRuntime
     protected readonly IEngineKernel _renderKernel;
     
     protected abstract RuntimeThreads ActiveThreads { get; }
+
+    protected Thread _gameThread = null!;
+    protected Thread _renderThread = null!;
     
-    /// Module setup hooks
+    private volatile ExitCode _mainCode = ExitCode.Ok;
+    private volatile ExitCode _gameCode = ExitCode.Ok;
+    private volatile ExitCode _renderCode = ExitCode.Ok;
+    
     protected virtual void SetupMainModules(IEngineKernel kernel, IRegistry registry) { }
     protected virtual void SetupGameModules(IEngineKernel kernel, IRegistry registry) { }
     protected virtual void SetupRenderModules(IEngineKernel kernel, IRegistry registry) { }
@@ -54,19 +58,6 @@ internal abstract class Runtime : IRuntime
     protected virtual T ParseArgs<T>(string[]? args) where T : notnull => default!;
 
     protected Runtime()
-    {
-        _registry = IRegistry.Create();
-        
-        _mainRegistry = _registry.Local;
-        _gameRegistry = _registry.Local;
-        _renderRegistry = _registry.Local;
-        
-        _mainKernel = IEngineKernel.Create(_mainRegistry.ReadOnly);
-        _gameKernel = IEngineKernel.Create(_gameRegistry.ReadOnly);
-        _renderKernel = IEngineKernel.Create(_renderRegistry.ReadOnly);
-    }
-    
-    public virtual void Run()
     {
         var frameRing = new SPSCRing<FrameStart>(_framePipeCapacity);
         var framePort = new PipePort<FrameStart>(frameRing);
@@ -88,154 +79,77 @@ internal abstract class Runtime : IRuntime
             RenderCommands = ctrlPort
         };
         
+        _registry = IRegistry.Create();
+        
+        _mainRegistry = _registry.Local;
+        _gameRegistry = _registry.Local;
+        _renderRegistry = _registry.Local;
+        
         _registry.Add(channels);
         _mainRegistry.Add<IMainChannels>(new MainChannelsView(channels));
         _gameRegistry.Add<IGameChannels>(new GameChannelsView(channels));
         _renderRegistry.Add<IRenderChannels>(new RenderChannelsView(channels));
         
+        _mainKernel = IEngineKernel.Create<IMainKernel>(_mainRegistry.ReadOnly, _cts.Token);
+        _gameKernel = IEngineKernel.Create<IGameKernel>(_gameRegistry.ReadOnly, _cts.Token);
+        _renderKernel = IEngineKernel.Create<IRenderKernel>(_renderRegistry.ReadOnly, _cts.Token);
+    }
+    
+    public virtual ExitCode Run()
+    {
         SetupMainModules(_mainKernel, _mainRegistry);
         SetupGameModules(_gameKernel, _gameRegistry);
         SetupRenderModules(_renderKernel, _renderRegistry);
         
-        var ct = _cts.Token;
-        
-        Thread? renderThread = null;
-        Thread? gameThread   = null;
-        
         if (ActiveThreads.HasFlag(RuntimeThreads.Render))
         {
-            renderThread = new Thread(() => RenderLoop(_renderKernel, ct))
+            _renderThread = new Thread(() =>
             {
-                Name = "Render", 
-                IsBackground = true
+                _renderCode = _renderKernel.Run();
+                if (_renderCode != ExitCode.Ok && _renderCode != ExitCode.Canceled)
+                    _cts.Cancel();
+            })
+            {
+                Name = "Render",
+                IsBackground = true,
+                Priority = ThreadPriority.AboveNormal
             };
-            renderThread.Start();
+            
+            _renderThread.Start();
         }
-
+        
         if (ActiveThreads.HasFlag(RuntimeThreads.Game))
         {
-            gameThread = new Thread(() => GameLoop(_gameKernel, _fixedDt, _maxFrameDt, _maxFixedStepsPerFrame, ct))
+            _gameThread = new Thread(() =>
+            {
+                _gameCode = _gameKernel.Run();
+                if (_gameCode != ExitCode.Ok && _gameCode != ExitCode.Canceled)
+                    _cts.Cancel();
+            })
             {
                 Name = "Game", 
                 IsBackground = true
             };
-            gameThread.Start();
+            
+            _gameThread.Start();
         }
 
         if (ActiveThreads.HasFlag(RuntimeThreads.Main))
         {
-            try
-            {
-                _mainKernel.Initialize();
-                _mainKernel.Start();
-
-                var sw = Stopwatch.StartNew();
-                long frameId = 0;
-                double last  = 0;
-
-                var channel = require(_mainKernel.Context.Registry.Get<IMainChannels>());
-                
-                while (!ct.IsCancellationRequested)
-                {
-                    _mainKernel.Update();
-                    _mainKernel.LateUpdate();
-
-                    var now = sw.Elapsed.TotalSeconds;
-                    var raw = (float)(now - last);
-                    last = now;
-                    var dt = clamp(raw, 0f, _maxFrameDt);
-                    
-                    channel.FrameWriter.Write(new FrameStart(frameId, dt), ct);
-                    frameId++;
-                }
-            }
-            catch (OperationCanceledException) { /* normal shutdown */ }
-            finally
-            {
-                try { frameRing.Complete(); } catch { /* ignore */ }
-                
-                try { gameThread?.Join();   } catch { /* ignore */ }
-                try { renderThread?.Join(); } catch { /* ignore */ }
-
-                try { _renderKernel.Shutdown(); } catch { /* ignore */ }
-                try { _gameKernel.Shutdown();     } catch { /* ignore */ }
-                try { _mainKernel.Shutdown();     } catch { /* ignore */ }
-            }
+            _mainCode = _mainKernel.Run();
+            if (_mainCode != ExitCode.Ok && _mainCode != ExitCode.Canceled)
+                _cts.Cancel();
         }
-    }
-    
-    private static void GameLoop(IEngineKernel kernel, float fixedDt, float maxFrameDt, int maxStepsPerFrame, CancellationToken ct)
-    {
-        try
-        {
-            kernel.Initialize();
-            kernel.Start();
+        
+        _cts.Cancel();
+        try {_renderThread?.Join();} catch { /* ignore */ }
+        try {_gameThread?.Join();} catch { /* ignore */ }
 
-            float accumulator = 0f;
-            int simFrame = 0;
-            
-            var context = require(kernel.Context);
-            var channel = require(context.Registry.Get<IGameChannels>());
-            
-            while (!ct.IsCancellationRequested)
-            {
-                var start = channel.FrameReader.Read(ct);
-                
-                var dt = clamp(start.Dt, 0f, maxFrameDt);
-                accumulator += dt;
-
-                // Fixed-step simulation
-                int steps = 0;
-                while (accumulator >= fixedDt && steps < maxStepsPerFrame)
-                {
-                    context.DeltaTime = fixedDt;
-                    kernel.FixedUpdate();
-                    accumulator -= fixedDt;
-                    simFrame++;
-                    steps++;
-                }
-
-                // Variable updates
-                context.DeltaTime = dt;
-                kernel.Update();
-                kernel.LateUpdate();
-
-                // Interpolation factor for renderer
-                channel.SceneWriter.Publish(new SceneView(simFrame, clamp(accumulator / fixedDt, 0f, 1f)));
-            }
-        }
-        catch (OperationCanceledException) { /* normal shutdown */ }
-        finally
-        {
-            try { kernel.Shutdown(); } catch { /* ignore */ }
-        }
-    }
-
-    private static void RenderLoop(IEngineKernel kernel, CancellationToken ct)
-    {
-        try
-        {
-            kernel.Initialize();
-            kernel.Start();
-            
-            var channel = require(kernel.Context.Registry.Get<IRenderChannels>());
-
-            while (!ct.IsCancellationRequested)
-            {
-                // Read freshest view (no queue: latest-wins snapshot)
-                channel.SceneReader.Read();
-                
-                // context.Channels.RenderCommands.Drain(rc => ApplyRenderControl(ref context, rc));
-                
-                kernel.Update();
-                kernel.LateUpdate();
-            }
-        }
-        catch (OperationCanceledException) { /* normal shutdown */ }
-        finally
-        {
-            try { kernel.Shutdown(); } catch { /* ignore */ }
-        }
+        ExitCode final = default;
+        foreach (var code in new[] { _mainCode, _gameCode, _renderCode })
+            if (code > final) 
+                final = code;
+        
+        return final;
     }
 }
-

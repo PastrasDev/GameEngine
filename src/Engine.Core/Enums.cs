@@ -44,3 +44,15 @@ public enum PhaseMask
     Late=16, 
     Shutdown=32
 }
+
+public enum ExitCode
+{
+    /// clean shutdown
+    Ok = 0,
+    /// normal cancellation (e.g., user quit)
+    Canceled = 10,
+    /// non-fatal error; runtime can shut down gracefully
+    Recoverable = 20,
+    /// fatal error
+    Fatal = 30       
+}

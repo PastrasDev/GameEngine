@@ -1,6 +1,6 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
     <PropertyGroup>
-        <OutputType>WinExe</OutputType>
+        <OutputType>Exe</OutputType>
         <PublishTrimmed>false</PublishTrimmed>
         <PublishAot>false</PublishAot>
         <InvariantGlobalization>false</InvariantGlobalization>

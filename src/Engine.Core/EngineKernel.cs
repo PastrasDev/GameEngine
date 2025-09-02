@@ -1,8 +1,10 @@
 ﻿using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Reflection;
 using System.Runtime.CompilerServices;
+using System.Threading;
 
 namespace Engine.Core;
 
@@ -10,6 +12,7 @@ public interface IEngineKernel
 {
     IEngineContext Context { get; }
     
+    ExitCode Run();
     void Add(EngineModule module);
     void Initialize();
     void Start();
@@ -17,12 +20,29 @@ public interface IEngineKernel
     void Update();
     void LateUpdate();
     void Shutdown();
-    
-    static IEngineKernel Create(IRegistry registry) => new EngineKernel(registry);
+
+    static IEngineKernel Create<T>(IRegistry registry, CancellationToken ct) where T : IEngineKernel
+    {
+        if (typeof(T) == typeof(IMainKernel))
+            return new MainKernel(registry, ct);
+        if (typeof(T) == typeof(IGameKernel))
+            return new GameKernel(registry, ct);
+        if (typeof(T) == typeof(IRenderKernel))
+            return new RenderKernel(registry, ct);
+        throw new ArgumentException($"Unknown kernel type: {typeof(T)}");
+    }
 }
 
-internal sealed class EngineKernel(IRegistry registry) : IEngineKernel
+public interface IMainKernel : IEngineKernel;
+public interface IGameKernel : IEngineKernel;
+public interface IRenderKernel : IEngineKernel;
+
+internal abstract class EngineKernel(IRegistry registry) : IEngineKernel
 {
+    protected const float _fixedDt = 1f / 120f;
+    protected const float _maxFrameDt = 0.25f;
+    protected const int _maxFixedStepsPerFrame = 8;
+    
     private readonly List<Slot> _init = [];
     private readonly List<Slot> _start = [];
     private readonly List<Slot> _fixed = [];
@@ -52,7 +72,10 @@ internal sealed class EngineKernel(IRegistry registry) : IEngineKernel
         [MethodImpl(MethodImplOptions.AggressiveInlining)] public static void Shutdown(EngineModule m) => ((T)m).Shutdown();
     }
 
-    [MethodImpl(MethodImplOptions.AggressiveInlining)] 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public abstract ExitCode Run();
+    
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public void Add(EngineModule module) => AddTyped((dynamic)module);
     
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -100,7 +123,7 @@ internal sealed class EngineKernel(IRegistry registry) : IEngineKernel
         foreach (var m in _allModules) 
             m.Context = Context;
         
-        for (int i = 0; i < _init.Count; i++) 
+        for (int i = 0; i < _init.Count; i++)
             _init[i].Fn(_init[i].Module);
     }
 
@@ -137,5 +160,148 @@ internal sealed class EngineKernel(IRegistry registry) : IEngineKernel
     {
         for (int i = _shutdown.Count - 1; i >= 0; i--) 
             _shutdown[i].Fn(_shutdown[i].Module);
+    }
+}
+
+internal sealed class MainKernel(IRegistry registry, CancellationToken ct) : EngineKernel(registry), IMainKernel
+{
+    
+    public override ExitCode Run()
+    {
+        try
+        {
+            Initialize();
+            Start();
+
+            var sw = Stopwatch.StartNew();
+            long frameId = 0;
+            double last = 0;
+
+            var channel = require(Context.Registry.Get<IMainChannels>());
+
+            while (!ct.IsCancellationRequested)
+            {
+                Update();
+                LateUpdate();
+
+                var now = sw.Elapsed.TotalSeconds;
+                var raw = (float)(now - last);
+                last = now;
+                var dt = clamp(raw, 0f, _maxFrameDt);
+
+                channel.FrameWriter.Write(new FrameStart(frameId, dt), ct);
+                frameId++;
+            }
+
+            return ExitCode.Canceled;
+        }
+        catch (OperationCanceledException)
+        {
+            return ExitCode.Canceled;
+        }
+        catch (Exception)
+        {
+            // TODO: log
+            return ExitCode.Fatal;
+        }
+        finally
+        {
+            try { Shutdown(); } catch { /* ignore */ }
+        }
+    }
+}
+
+internal sealed class GameKernel(IRegistry registry, CancellationToken ct) : EngineKernel(registry), IGameKernel
+{
+    
+    public override ExitCode Run()
+    {
+        try
+        {
+            Initialize();
+            Start();
+        
+            float accumulator = 0f;
+            int simFrame = 0;
+        
+            var channel = require(Context.Registry.Get<IGameChannels>());
+        
+            while (!ct.IsCancellationRequested)
+            {
+                var start = channel.FrameReader.Read(ct);
+            
+                var dt = clamp(start.Dt, 0f, _maxFrameDt);
+                accumulator += dt;
+            
+                int steps = 0;
+                while (accumulator >= _fixedDt && steps < _maxFixedStepsPerFrame)
+                {
+                    Context.DeltaTime = _fixedDt;
+                    FixedUpdate();
+                    accumulator -= _fixedDt;
+                    simFrame++;
+                    steps++;
+                }
+            
+                Context.DeltaTime = dt;
+                Update();
+                LateUpdate();
+            
+                channel.SceneWriter.Publish(new SceneView(simFrame, clamp(accumulator / _fixedDt, 0f, 1f)));
+            }
+            
+            return ExitCode.Canceled;
+        }
+        catch (OperationCanceledException)
+        {
+            return ExitCode.Canceled;
+        }
+        catch (Exception)
+        {
+            // TODO: log
+            return ExitCode.Fatal;
+        }
+        finally
+        {
+            try { Shutdown(); } catch { /* ignore */ }
+        }
+    }
+}
+
+internal sealed class RenderKernel(IRegistry registry, CancellationToken ct) : EngineKernel(registry), IRenderKernel
+{
+    
+    public override ExitCode Run()
+    {
+        try
+        {
+            Initialize();
+            Start();
+        
+            var channel = require(Context.Registry.Get<IRenderChannels>());
+            
+            while (!ct.IsCancellationRequested)
+            {
+                channel.SceneReader.Read();
+
+                Update();
+                LateUpdate();
+            }
+            
+            return ExitCode.Canceled;
+        }
+        catch (OperationCanceledException)
+        {
+            return ExitCode.Canceled;
+        }
+        catch (Exception)
+        {
+            // TODO: log
+            return ExitCode.Fatal;
+        }
+        finally
+        {
+            try { Shutdown(); } catch { /* ignore */ }
+        }
     }
 }
