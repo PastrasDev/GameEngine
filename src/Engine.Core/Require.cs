@@ -21,68 +21,80 @@ public class RequireException(string msg, string file, int line, string member) 
 /// </summary>
 public static class Require
 {
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static bool isNull<T>(T? obj) => obj == null;
+    
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static bool isNotNull<T>(T? obj) => obj != null;
+    
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static bool isTrue(bool condition) => condition;
+    
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static bool isFalse(bool condition) => !condition;
+    
     [StackTraceHidden, MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static bool IsTrue([DoesNotReturnIf(false)] bool condition, string? message = null, [CallerArgumentExpression("condition")] string? expr = null, [CallerFilePath] string file = "", [CallerLineNumber] int line = 0, [CallerMemberName] string member = "")
+    public static T require<T>(T value, Func<T, bool> predicate, string? message = null, [CallerArgumentExpression("value")] string? expr = null, [CallerFilePath] string file = "", [CallerLineNumber] int line = 0, [CallerMemberName] string member = "")
     {
-        return condition ? true : throw new RequireException(message ?? $"'{expr}' is false.", file, line, member);
+        return predicate(value) ? value : throw new RequireException(message ?? $"'{expr}' does not satisfy required condition.", file, line, member);
     }
     
     [StackTraceHidden, MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static bool IsFalse([DoesNotReturnIf(true)] bool condition, string? message = null, [CallerArgumentExpression("condition")] string? expr = null, [CallerFilePath] string file = "", [CallerLineNumber] int line = 0, [CallerMemberName] string member = "")
+    public static bool require(bool value, bool condition, string? message = null, [CallerArgumentExpression("value")] string? expr = null, [CallerFilePath] string file = "", [CallerLineNumber] int line = 0, [CallerMemberName] string member = "")
     {
-        return condition ? throw new RequireException(message ?? $"'{expr}' is true.", file, line, member) : true;
+        return (value == condition) ? value : throw new RequireException(message ?? $"'{expr}' is not {condition}.", file, line, member);
     }
     
     [return: NotNull][StackTraceHidden, MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static T IsNotNull<T>(T? obj, string? message = null, [CallerArgumentExpression("obj")] string? expr = null, [CallerFilePath] string file = "", [CallerLineNumber] int line = 0, [CallerMemberName] string member = "") where T : class
+    public static T require<T>(T? obj, string? message = null, [CallerArgumentExpression("obj")] string? expr = null, [CallerFilePath] string file = "", [CallerLineNumber] int line = 0, [CallerMemberName] string member = "") where T : class
     {
         return obj ?? throw new RequireException(message ?? $"'{expr}' is null.", file, line, member);
     }
-
+    
     [return: NotNull][StackTraceHidden, MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static T IsType<T>(object? obj, string? message = null, [CallerArgumentExpression("obj")] string? expr = null, [CallerFilePath] string file = "", [CallerLineNumber] int line = 0, [CallerMemberName] string member = "")
+    public static T isType<T>(object? obj, string? message = null, [CallerArgumentExpression("obj")] string? expr = null, [CallerFilePath] string file = "", [CallerLineNumber] int line = 0, [CallerMemberName] string member = "")
     {
         return obj is T t ? t : throw new RequireException(message ?? $"'{expr}' is not of type {typeof(T).Name}.", file, line, member);
     }
     
     [StackTraceHidden, MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static string IsNotNullOrEmpty(string? str, string? message = null, [CallerArgumentExpression("str")] string? expr = null, [CallerFilePath] string file = "", [CallerLineNumber] int line = 0, [CallerMemberName] string member = "")
+    public static string isNotNullOrEmpty(string? str, string? message = null, [CallerArgumentExpression("str")] string? expr = null, [CallerFilePath] string file = "", [CallerLineNumber] int line = 0, [CallerMemberName] string member = "")
     {
         return string.IsNullOrEmpty(str) ? throw new RequireException(message ?? $"'{expr}' is null or empty.", file, line, member) : str;
     }
     
     [StackTraceHidden, MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static string IsNotNullOrWhiteSpace(string? str, string? message = null, [CallerArgumentExpression("str")] string? expr = null, [CallerFilePath] string file = "", [CallerLineNumber] int line = 0, [CallerMemberName] string member = "")
+    public static string isNotNullOrWhiteSpace(string? str, string? message = null, [CallerArgumentExpression("str")] string? expr = null, [CallerFilePath] string file = "", [CallerLineNumber] int line = 0, [CallerMemberName] string member = "")
     {
         return string.IsNullOrWhiteSpace(str) ? throw new RequireException(message ?? $"'{expr}' is null or whitespace.", file, line, member) : str;
     }
     
     [StackTraceHidden, MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static ICollection<T> IsNotEmpty<T>(ICollection<T>? collection, string? message = null, [CallerArgumentExpression("collection")] string? expr = null, [CallerFilePath] string file = "", [CallerLineNumber] int line = 0, [CallerMemberName] string member = "")
+    public static ICollection<T> isNotEmpty<T>(ICollection<T>? collection, string? message = null, [CallerArgumentExpression("collection")] string? expr = null, [CallerFilePath] string file = "", [CallerLineNumber] int line = 0, [CallerMemberName] string member = "")
     {
         return collection != null && collection.Count != 0 ? collection : throw new RequireException(message ?? $"'{expr}' is null or empty.", file, line, member);
     }
     
     [StackTraceHidden, MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static IReadOnlyCollection<T> IsNotEmpty<T>(IReadOnlyCollection<T>? collection, string? message = null, [CallerArgumentExpression("collection")] string? expr = null, [CallerFilePath] string file = "", [CallerLineNumber] int line = 0, [CallerMemberName] string member = "")
+    public static IReadOnlyCollection<T> isNotEmpty<T>(IReadOnlyCollection<T>? collection, string? message = null, [CallerArgumentExpression("collection")] string? expr = null, [CallerFilePath] string file = "", [CallerLineNumber] int line = 0, [CallerMemberName] string member = "")
     {
         return collection is { Count: > 0 } ? collection : throw new RequireException(message ?? $"'{expr}' is null or empty.", file, line, member);
     }
     
     [StackTraceHidden, MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static T[] IsNotEmpty<T>(T[]? array, string? message = null, [CallerArgumentExpression("array")] string? expr = null, [CallerFilePath] string file = "", [CallerLineNumber] int line = 0, [CallerMemberName] string member = "")
+    public static T[] isNotEmpty<T>(T[]? array, string? message = null, [CallerArgumentExpression("array")] string? expr = null, [CallerFilePath] string file = "", [CallerLineNumber] int line = 0, [CallerMemberName] string member = "")
     {
         return array != null && array.Length != 0 ? array : throw new RequireException(message ?? $"'{expr}' is null or empty.", file, line, member);
     }
     
     [StackTraceHidden, MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static List<T> IsNotEmpty<T>(List<T>? list, string? message = null, [CallerArgumentExpression("list")] string? expr = null, [CallerFilePath] string file = "", [CallerLineNumber] int line = 0, [CallerMemberName] string member = "")
+    public static List<T> isNotEmpty<T>(List<T>? list, string? message = null, [CallerArgumentExpression("list")] string? expr = null, [CallerFilePath] string file = "", [CallerLineNumber] int line = 0, [CallerMemberName] string member = "")
     {
         return list != null && list.Count != 0 ? list : throw new RequireException(message ?? $"'{expr}' is null or empty.", file, line, member);
     }
     
     [StackTraceHidden, MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static IEnumerable<T> IsNotEmpty<T>(IEnumerable<T>? sequence, string? message = null, [CallerArgumentExpression("sequence")] string? expr = null, [CallerFilePath] string file = "", [CallerLineNumber] int line = 0, [CallerMemberName] string member = "")
+    public static IEnumerable<T> isNotEmpty<T>(IEnumerable<T>? sequence, string? message = null, [CallerArgumentExpression("sequence")] string? expr = null, [CallerFilePath] string file = "", [CallerLineNumber] int line = 0, [CallerMemberName] string member = "")
     {
         if (sequence is null)
             throw new RequireException(message ?? $"'{expr}' is null or empty.", file, line, member);
@@ -102,9 +114,5 @@ public static class Require
         }
     }
     
-    [StackTraceHidden, MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static T Satisfies<T>(T value, Func<T, bool> predicate, string? message = null, [CallerArgumentExpression("value")] string? expr = null, [CallerFilePath] string file = "", [CallerLineNumber] int line = 0, [CallerMemberName] string member = "")
-    {
-        return predicate(value) ? value : throw new RequireException(message ?? $"'{expr}' does not satisfy required condition.", file, line, member);
-    }
+    
 }
