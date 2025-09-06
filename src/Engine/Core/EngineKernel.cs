@@ -38,27 +38,20 @@ public abstract class EngineKernel
     public required EngineContext Context { get => _context; init { _context = value; _initCount++; TryLaunch(); } }
     public required bool Enabled { init { _launch = value; TryLaunch(); } }
     
-    private (int start, int len) _initR;
-    private (int start, int len) _startR;
-    private (int start, int len) _fixedR;
-    private (int start, int len) _updateR;
-    private (int start, int len) _lateR;
-    private (int start, int len) _shutR;
-    
-    private readonly List<object> _modulesInit  = [];
-    private readonly List<object> _modulesStart = [];
-    private readonly List<object> _modulesFixed = [];
-    private readonly List<object> _modulesUpdate= [];
-    private readonly List<object> _modulesLate  = [];
-    private readonly List<object> _modulesShut  = [];
-    
+    private readonly List<object> _modulesInit   = [];
+    private readonly List<object> _modulesStart  = [];
+    private readonly List<object> _modulesFixed  = [];
+    private readonly List<object> _modulesUpdate = [];
+    private readonly List<object> _modulesLate   = [];
+    private readonly List<object> _modulesShut   = [];
+
     private readonly List<nint> _functionsInit   = [];
     private readonly List<nint> _functionsStart  = [];
     private readonly List<nint> _functionsFixed  = [];
     private readonly List<nint> _functionsUpdate = [];
     private readonly List<nint> _functionsLate   = [];
     private readonly List<nint> _functionsShut   = [];
-    
+
     private readonly List<nint> _enabledInit   = [];
     private readonly List<nint> _enabledStart  = [];
     private readonly List<nint> _enabledFixed  = [];
@@ -66,45 +59,55 @@ public abstract class EngineKernel
     private readonly List<nint> _enabledLate   = [];
     private readonly List<nint> _enabledShut   = [];
     
-    private object[] _modules = [];
-    private nint[] _fns  = [];
-    private nint[] _ens = [];
-    
-    protected abstract void Run();
-    
-    [MethodImpl(MethodImplOptions.AggressiveInlining)] protected void Initialize() => Exec(_initR);
-    [MethodImpl(MethodImplOptions.AggressiveInlining)] protected void Start() => Exec(_startR);
-    [MethodImpl(MethodImplOptions.AggressiveInlining)] protected void FixedUpdate() => Exec(_fixedR);
-    [MethodImpl(MethodImplOptions.AggressiveInlining)] protected void Update() => Exec(_updateR);
-    [MethodImpl(MethodImplOptions.AggressiveInlining)] protected void LateUpdate() => Exec(_lateR);
-    [MethodImpl(MethodImplOptions.AggressiveInlining)] protected void Shutdown() => Exec(_shutR, true, true);
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private unsafe void Exec((int start, int len) r, bool reverse = false, bool ignore = false)
+    internal readonly unsafe struct PhaseData
     {
-        var modules = _modules;
-        var fns  = _fns;
-        var ens  = _ens;
+        public required object[] Modules { get; init; }
+        public required delegate* managed<object, bool>[] Ens { get; init; }
+        public required delegate* managed<object, void>[] Fns { get; init; }
         
-        if (!reverse)
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public void Exec(bool reverse = false, bool ignoreEnabled = false)
         {
-            for (int i = r.start, end = r.start + r.len; i < end; i++)
+            var mods = Modules;
+            var ens  = Ens;
+            var fns  = Fns;
+
+            if (!reverse)
             {
-                var m = modules[i];
-                if (!ignore && !((delegate* managed<object, bool>)ens[i])(m)) continue;
-                ((delegate* managed<object, void>)fns[i])(m);
+                for (int i = 0, n = mods.Length; i < n; i++)
+                {
+                    var m = mods[i];
+                    if (!ignoreEnabled && !ens[i](m)) continue;
+                    fns[i](m);
+                }
             }
-        }
-        else
-        {
-            for (int i = r.start + r.len - 1; i >= r.start; i--)
+            else
             {
-                var m = modules[i];
-                if (!ignore && !((delegate* managed<object, bool>)ens[i])(m)) continue;
-                ((delegate* managed<object, void>)fns[i])(m);
+                for (int i = mods.Length - 1; i >= 0; i--)
+                {
+                    var m = mods[i];
+                    if (!ignoreEnabled && !ens[i](m)) continue;
+                    fns[i](m);
+                }
             }
         }
     }
+    
+    private PhaseData _initData;
+    private PhaseData _startData;
+    private PhaseData _fixedData;
+    private PhaseData _updateData;
+    private PhaseData _lateData;
+    private PhaseData _shutData;
+    
+    [MethodImpl(MethodImplOptions.AggressiveInlining)] protected void Initialize() => _initData.Exec();
+    [MethodImpl(MethodImplOptions.AggressiveInlining)] protected void Start() => _startData.Exec();
+    [MethodImpl(MethodImplOptions.AggressiveInlining)] protected void FixedUpdate() => _fixedData.Exec();
+    [MethodImpl(MethodImplOptions.AggressiveInlining)] protected void Update() => _updateData.Exec();
+    [MethodImpl(MethodImplOptions.AggressiveInlining)] protected void LateUpdate() => _lateData.Exec();
+    [MethodImpl(MethodImplOptions.AggressiveInlining)] protected void Shutdown() => _shutData.Exec(true, true);
+    
+    protected abstract void Run();
     
     private void TryLaunch()
     {
@@ -179,56 +182,36 @@ public abstract class EngineKernel
     
     public void PostLoadModules()
     {
-        int total = _modulesInit.Count + _modulesStart.Count + _modulesFixed.Count + _modulesUpdate.Count + _modulesLate.Count + _modulesShut.Count;
+        _initData   = Flatten(_modulesInit,  _functionsInit,  _enabledInit);
+        _startData  = Flatten(_modulesStart, _functionsStart, _enabledStart);
+        _fixedData  = Flatten(_modulesFixed, _functionsFixed, _enabledFixed);
+        _updateData = Flatten(_modulesUpdate,_functionsUpdate,_enabledUpdate);
+        _lateData   = Flatten(_modulesLate,  _functionsLate,  _enabledLate);
+        _shutData   = Flatten(_modulesShut,  _functionsShut,  _enabledShut);
+    }
+    
+    private static unsafe PhaseData Flatten(List<object> mods, List<nint> fns, List<nint> ens)
+    {
+        int n = mods.Count;
+        var m = new object[n];
+        var f = new delegate* managed<object, void>[n];
+        var e = new delegate* managed<object, bool>[n];
 
-        _modules = new object[total];
-        _fns  = new nint[total];
-        _ens  = new nint[total];
-
-        int o = 0;
-        _initR   = CopyRange(_modulesInit,  _functionsInit,  _enabledInit,  ref o);
-        _startR  = CopyRange(_modulesStart, _functionsStart, _enabledStart, ref o);
-        _fixedR  = CopyRange(_modulesFixed, _functionsFixed, _enabledFixed, ref o);
-        _updateR = CopyRange(_modulesUpdate,_functionsUpdate,_enabledUpdate,ref o);
-        _lateR   = CopyRange(_modulesLate,  _functionsLate,  _enabledLate,  ref o);
-        _shutR   = CopyRange(_modulesShut,  _functionsShut,  _enabledShut,  ref o);
-        
-        _modulesInit.Clear();
-        _modulesStart.Clear();
-        _modulesFixed.Clear();
-        _modulesUpdate.Clear();
-        _modulesLate.Clear();
-        _modulesShut.Clear();
-        
-        _functionsInit.Clear();
-        _functionsStart.Clear();
-        _functionsFixed.Clear();
-        _functionsUpdate.Clear();
-        _functionsLate.Clear();
-        _functionsShut.Clear();
-        
-        _enabledInit.Clear();
-        _enabledStart.Clear();
-        _enabledFixed.Clear();
-        _enabledUpdate.Clear();
-        _enabledLate.Clear();
-        _enabledShut.Clear();
-        return;
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        (int start, int len) CopyRange(List<object> mods, List<nint> fns, List<nint> ens, ref int offset)
+        for (int i = 0; i < n; i++)
         {
-            int len = mods.Count;
-            for (int i = 0; i < len; i++)
-            {
-                _modules[offset + i] = mods[i];
-                _fns[offset + i]     = fns[i];
-                _ens[offset + i]     = ens[i];
-            }
-            var r = (offset, len);
-            offset += len;
-            return r;
+            m[i] = mods[i];
+            f[i] = (delegate* managed<object, void>)fns[i];
+            e[i] = (delegate* managed<object, bool>)ens[i];
         }
+
+        mods.Clear(); fns.Clear(); ens.Clear();
+
+        return new PhaseData
+        {
+            Modules = m,
+            Fns     = f,
+            Ens     = e
+        };
     }
     
     
