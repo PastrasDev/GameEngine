@@ -12,7 +12,7 @@ public sealed class Window : EngineModule<Window>
     public override void Load()
     {
         Console.WriteLine("Window loaded");
-        Enabled = false;
+        Enabled = true;
         
     }
     

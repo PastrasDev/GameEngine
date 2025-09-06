@@ -8,8 +8,8 @@ public sealed class Renderer : EngineModule<Renderer>
 {
     public override void Load()
     {
-        Enabled = true;
         Console.WriteLine("D3D11 Renderer loaded");
+        Enabled = true;
         
     }
     

@@ -1,4 +1,4 @@
-﻿using System;
+﻿﻿using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
@@ -59,8 +59,16 @@ public abstract class EngineKernel
     private readonly List<nint> _functionsLate   = [];
     private readonly List<nint> _functionsShut   = [];
     
+    private readonly List<nint> _enabledInit   = [];
+    private readonly List<nint> _enabledStart  = [];
+    private readonly List<nint> _enabledFixed  = [];
+    private readonly List<nint> _enabledUpdate = [];
+    private readonly List<nint> _enabledLate   = [];
+    private readonly List<nint> _enabledShut   = [];
+    
     private object[] _modules = [];
     private nint[] _fns  = [];
+    private nint[] _ens = [];
     
     protected abstract void Run();
     
@@ -69,20 +77,32 @@ public abstract class EngineKernel
     [MethodImpl(MethodImplOptions.AggressiveInlining)] protected void FixedUpdate() => Exec(_fixedR);
     [MethodImpl(MethodImplOptions.AggressiveInlining)] protected void Update() => Exec(_updateR);
     [MethodImpl(MethodImplOptions.AggressiveInlining)] protected void LateUpdate() => Exec(_lateR);
-    [MethodImpl(MethodImplOptions.AggressiveInlining)] protected void Shutdown() => Exec(_shutR, true);
+    [MethodImpl(MethodImplOptions.AggressiveInlining)] protected void Shutdown() => Exec(_shutR, true, true);
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private unsafe void Exec((int start, int len) r, bool reverse = false, bool ignore = false)
     {
         var modules = _modules;
         var fns  = _fns;
+        var ens  = _ens;
+        
         if (!reverse)
         {
-            for (int i = r.start, end = r.start + r.len; i < end; i++) ((delegate* managed<object, void>)fns[i])(modules[i]);
+            for (int i = r.start, end = r.start + r.len; i < end; i++)
+            {
+                var m = modules[i];
+                if (!ignore && !((delegate* managed<object, bool>)ens[i])(m)) continue;
+                ((delegate* managed<object, void>)fns[i])(m);
+            }
         }
         else
         {
-            for (int i = r.start + r.len - 1; i >= r.start; i--) ((delegate* managed<object, void>)fns[i])(modules[i]);
+            for (int i = r.start + r.len - 1; i >= r.start; i--)
+            {
+                var m = modules[i];
+                if (!ignore && !((delegate* managed<object, bool>)ens[i])(m)) continue;
+                ((delegate* managed<object, void>)fns[i])(m);
+            }
         }
     }
     
@@ -121,16 +141,18 @@ public abstract class EngineKernel
     {
         m.Context = require(Context);
         
+        var en = EngineModule<T>.__EnabledPtr;
+        
         foreach (var pf in EngineModule<T>.Descriptor.Overrides)
         {
             switch (pf.Phase)
             {
-                case Phase.Init: _modulesInit.Add(m); _functionsInit.Add((nint)pf.Fn); break;
-                case Phase.Start: _modulesStart.Add(m); _functionsStart.Add((nint)pf.Fn); break;
-                case Phase.Fixed: _modulesFixed.Add(m); _functionsFixed.Add((nint)pf.Fn); break;
-                case Phase.Update: _modulesUpdate.Add(m); _functionsUpdate.Add((nint)pf.Fn); break;
-                case Phase.Late: _modulesLate.Add(m); _functionsLate.Add((nint)pf.Fn); break;
-                case Phase.Shutdown: _modulesShut.Add(m); _functionsShut.Add((nint)pf.Fn); break;
+                case Phase.Init:     _modulesInit.Add(m);  _functionsInit.Add((nint)pf.Fn);  _enabledInit.Add(en);  break;
+                case Phase.Start:    _modulesStart.Add(m); _functionsStart.Add((nint)pf.Fn); _enabledStart.Add(en); break;
+                case Phase.Fixed:    _modulesFixed.Add(m); _functionsFixed.Add((nint)pf.Fn); _enabledFixed.Add(en); break;
+                case Phase.Update:   _modulesUpdate.Add(m);_functionsUpdate.Add((nint)pf.Fn);_enabledUpdate.Add(en);break;
+                case Phase.Late:     _modulesLate.Add(m);  _functionsLate.Add((nint)pf.Fn);  _enabledLate.Add(en);  break;
+                case Phase.Shutdown: _modulesShut.Add(m);  _functionsShut.Add((nint)pf.Fn);  _enabledShut.Add(en);  break;
             }
         }
     }
@@ -161,15 +183,15 @@ public abstract class EngineKernel
 
         _modules = new object[total];
         _fns  = new nint[total];
+        _ens  = new nint[total];
 
         int o = 0;
-
-        _initR  = CopyRange(_modulesInit, _functionsInit, ref o);
-        _startR = CopyRange(_modulesStart, _functionsStart, ref o);
-        _fixedR = CopyRange(_modulesFixed, _functionsFixed, ref o);
-        _updateR= CopyRange(_modulesUpdate,_functionsUpdate,ref o);
-        _lateR  = CopyRange(_modulesLate, _functionsLate, ref o);
-        _shutR  = CopyRange(_modulesShut, _functionsShut, ref o);
+        _initR   = CopyRange(_modulesInit,  _functionsInit,  _enabledInit,  ref o);
+        _startR  = CopyRange(_modulesStart, _functionsStart, _enabledStart, ref o);
+        _fixedR  = CopyRange(_modulesFixed, _functionsFixed, _enabledFixed, ref o);
+        _updateR = CopyRange(_modulesUpdate,_functionsUpdate,_enabledUpdate,ref o);
+        _lateR   = CopyRange(_modulesLate,  _functionsLate,  _enabledLate,  ref o);
+        _shutR   = CopyRange(_modulesShut,  _functionsShut,  _enabledShut,  ref o);
         
         _modulesInit.Clear();
         _modulesStart.Clear();
@@ -184,21 +206,32 @@ public abstract class EngineKernel
         _functionsUpdate.Clear();
         _functionsLate.Clear();
         _functionsShut.Clear();
+        
+        _enabledInit.Clear();
+        _enabledStart.Clear();
+        _enabledFixed.Clear();
+        _enabledUpdate.Clear();
+        _enabledLate.Clear();
+        _enabledShut.Clear();
+        return;
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        (int start, int len) CopyRange(List<object> mods, List<nint> fns, List<nint> ens, ref int offset)
+        {
+            int len = mods.Count;
+            for (int i = 0; i < len; i++)
+            {
+                _modules[offset + i] = mods[i];
+                _fns[offset + i]     = fns[i];
+                _ens[offset + i]     = ens[i];
+            }
+            var r = (offset, len);
+            offset += len;
+            return r;
+        }
     }
     
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private (int start, int len) CopyRange(List<object> mods, List<nint> fns, ref int offset)
-    {
-        int len = mods.Count;
-        for (int i = 0; i < len; i++)
-        {
-            _modules[offset + i] = mods[i];
-            _fns[offset + i]  = fns[i];
-        }
-        var r = (offset, len);
-        offset += len;
-        return r;
-    }
+    
 }
 
 public sealed class MainKernel : EngineKernel
@@ -262,13 +295,14 @@ public sealed class GameKernel : EngineKernel
     {
         try
         {
-            ModuleLoader.Load(this);
-            
             var barrier = require(Context.Registry.Get<PhaseBarrier>());
             var channel = require(Context.Registry.Get<IGameChannels>());
             var ct = Context.TokenSrc.Token;
             
             barrier.MainInitDone.Wait(ct);
+            
+            ModuleLoader.Load(this);
+            
             Initialize();
             barrier.GameInitDone.Set();
                 
@@ -326,13 +360,14 @@ public sealed class RenderKernel : EngineKernel
     {
         try
         {
-            ModuleLoader.Load(this);
-            
             var barrier = require(Context.Registry.Get<PhaseBarrier>());
             var channel = require(Context.Registry.Get<IRenderChannels>());
             var ct = Context.TokenSrc.Token;
             
             barrier.GameInitDone.Wait(ct);
+            
+            ModuleLoader.Load(this);
+            
             Initialize();
             barrier.RenderInitDone.Set();
                 

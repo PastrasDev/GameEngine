@@ -20,6 +20,14 @@ internal readonly record struct ModuleDescriptor
 
 public abstract class EngineModule<TSelf> where TSelf : EngineModule<TSelf>
 {
+    public virtual void Load() { }
+    public virtual void Initialize() { }
+    public virtual void Start() { }
+    public virtual void FixedUpdate() { }
+    public virtual void Update() { }
+    public virtual void LateUpdate() { }
+    public virtual void Shutdown() { }
+    
     internal static readonly ModuleDescriptor Descriptor = new()
     {
         Type = typeof(TSelf),
@@ -33,15 +41,10 @@ public abstract class EngineModule<TSelf> where TSelf : EngineModule<TSelf>
     
     /// Determines whether this modules lifecycle methods are called beyond Load.
     public bool Enabled { get; set; } = true;
-
-    public virtual void Load() { }
-    public virtual void Initialize() { }
-    public virtual void Start() { }
-    public virtual void FixedUpdate() { }
-    public virtual void Update() { }
-    public virtual void LateUpdate() { }
-    public virtual void Shutdown() { }
     
+    internal static readonly unsafe nint __EnabledPtr = (nint)(delegate* managed<object, bool>)&__Enabled;
+    
+    [MethodImpl(MethodImplOptions.AggressiveInlining)] private static bool __Enabled(object o) => Unsafe.As<TSelf>(o).Enabled;
     [MethodImpl(MethodImplOptions.AggressiveInlining)] private static void __Load(object m) => Unsafe.As<TSelf>(m).Load();
     [MethodImpl(MethodImplOptions.AggressiveInlining)] private static void __Init(object m) => Unsafe.As<TSelf>(m).Initialize();
     [MethodImpl(MethodImplOptions.AggressiveInlining)] private static void __Start(object m) => Unsafe.As<TSelf>(m).Start();
