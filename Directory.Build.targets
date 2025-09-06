@@ -3,7 +3,6 @@
         
     </PropertyGroup>
     <ItemGroup Condition="'$(MathUsings)'=='true' and Exists('$(MSBuildThisFileDirectory)MathAliases.cs')">
-        <Using Include="Engine.Mathematics" />
         <Using Include="Engine.Mathematics.Math" Static="True" />
         <Compile Include="$(MSBuildThisFileDirectory)MathAliases.cs" />
     </ItemGroup>

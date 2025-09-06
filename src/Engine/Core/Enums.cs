@@ -2,13 +2,6 @@
 
 namespace Engine.Core;
 
-public enum RuntimeMode
-{
-    None,
-    Editor,
-    Game
-}
-
 public enum GameRole
 {
     None,
@@ -18,7 +11,7 @@ public enum GameRole
 }
 
 [Flags]
-public enum RuntimeThreads
+public enum Threads
 {
     None   = 0,
     Main   = 1 << 0,
@@ -34,15 +27,16 @@ public enum RenderControlType
 }
 
 [Flags]
-public enum PhaseMask
+public enum Phase
 {
-    None=0, 
-    Init=1, 
-    Start=2, 
-    Fixed=4, 
-    Update=8, 
-    Late=16, 
-    Shutdown=32
+    None     = 0,
+    Load     = 1 << 0,
+    Init     = 1 << 1,
+    Start    = 1 << 2,
+    Fixed    = 1 << 3,
+    Update   = 1 << 4,
+    Late     = 1 << 5,
+    Shutdown = 1 << 6
 }
 
 public enum ExitCode
@@ -55,4 +49,11 @@ public enum ExitCode
     Recoverable = 20,
     /// fatal error
     Fatal = 30       
+}
+
+public enum AccessType
+{
+    None,
+    ReadWrite,
+    ReadOnly
 }

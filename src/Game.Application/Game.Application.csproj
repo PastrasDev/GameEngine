@@ -6,7 +6,6 @@
         <InvariantGlobalization>false</InvariantGlobalization>
     </PropertyGroup>
     <ItemGroup>
-        <ProjectReference Include="$(_Src)Engine.Mathematics\Engine.Mathematics.csproj" />
         <ProjectReference Include="$(_Src)Engine.Runtime\Engine.Runtime.csproj" />
     </ItemGroup>
 </Project>

@@ -4,7 +4,6 @@
         <RequireUsings>true</RequireUsings>
     </PropertyGroup>
     <ItemGroup>
-        <ProjectReference Include="$(_Src)Engine.Core\Engine.Core.csproj" />
-        <ProjectReference Include="$(_Src)Engine.Mathematics\Engine.Mathematics.csproj" />
+        <ProjectReference Include="$(_Src)Engine\Engine.csproj" />
     </ItemGroup>
 </Project>
