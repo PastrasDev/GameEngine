@@ -9,38 +9,28 @@ using static PInvoke;
 [Affinity(Threads.Main)]
 public sealed class Window : EngineModule<Window>
 {
-    public override void Load()
-    {
-        Console.WriteLine("Window loaded");
-        Enabled = true;
-        
-    }
-    
-    public override void Initialize()
-    {
-        Console.WriteLine("Window initialized");
-        
-    }
+	public override void Load()
+	{
+		Console.WriteLine("Window loaded");
+		Enabled = true;
+	}
 
-    public override void Start()
-    {
-        Console.WriteLine("Window started");
-        
-    }
+	public override void Initialize()
+	{
+		Console.WriteLine("Window initialized");
+	}
 
-    public override void Update()
-    {
-        
-    }
+	public override void Start()
+	{
+		Console.WriteLine("Window started");
+	}
 
-    public override void LateUpdate()
-    {
-        
-    }
+	public override void Update() { }
 
-    public override void Shutdown()
-    {
-        Console.WriteLine("Window shutdown");
-        
-    }
+	public override void LateUpdate() { }
+
+	public override void Shutdown()
+	{
+		Console.WriteLine("Window shutdown");
+	}
 }

@@ -6,38 +6,28 @@ namespace Engine.Graphics.D3D11;
 [Affinity(Threads.Render)]
 public sealed class Renderer : EngineModule<Renderer>
 {
-    public override void Load()
-    {
-        Console.WriteLine("D3D11 Renderer loaded");
-        Enabled = true;
-        
-    }
-    
-    public override void Initialize()
-    {
-        Console.WriteLine("D3D11 Renderer initialized");
-        
-    }
+	public override void Load()
+	{
+		Console.WriteLine("D3D11 Renderer loaded");
+		Enabled = true;
+	}
 
-    public override void Start()
-    {
-        Console.WriteLine("D3D11 Renderer started");
-        
-    }
+	public override void Initialize()
+	{
+		Console.WriteLine("D3D11 Renderer initialized");
+	}
 
-    public override void Update()
-    {
-        
-    }
+	public override void Start()
+	{
+		Console.WriteLine("D3D11 Renderer started");
+	}
 
-    public override void LateUpdate()
-    {
-        
-    }
+	public override void Update() { }
 
-    public override void Shutdown()
-    {
-        Console.WriteLine("D3D11 Renderer shutdown");
-        
-    }
+	public override void LateUpdate() { }
+
+	public override void Shutdown()
+	{
+		Console.WriteLine("D3D11 Renderer shutdown");
+	}
 }

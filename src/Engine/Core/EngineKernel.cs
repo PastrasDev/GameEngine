@@ -1,384 +1,364 @@
-﻿﻿using System;
-using System.Collections.Generic;
+﻿using System;
 using System.Diagnostics;
-using System.Linq;
 using System.Reflection;
 using System.Runtime.CompilerServices;
-using System.Runtime.InteropServices;
 using System.Threading;
 
 namespace Engine.Core;
 
 public sealed class PhaseBarrier
 {
-    public readonly ManualResetEventSlim MainInitDone = new(false);
-    public readonly ManualResetEventSlim GameInitDone = new(false);
-    public readonly ManualResetEventSlim RenderInitDone = new(false);
+	public readonly ManualResetEventSlim MainInitDone = new(false);
+	public readonly ManualResetEventSlim GameInitDone = new(false);
+	public readonly ManualResetEventSlim RenderInitDone = new(false);
 
-    public readonly ManualResetEventSlim MainStartDone = new(false);
-    public readonly ManualResetEventSlim GameStartDone = new(false);
-    public readonly ManualResetEventSlim RenderStartDone = new(false);
+	public readonly ManualResetEventSlim MainStartDone = new(false);
+	public readonly ManualResetEventSlim GameStartDone = new(false);
+	public readonly ManualResetEventSlim RenderStartDone = new(false);
 }
 
 public abstract class EngineKernel
 {
-    protected const float _fixedDt = 1f / 120f;
-    protected const float _maxFrameDt = 0.25f;
-    protected const int _maxFixedStepsPerFrame = 8;
-    
-    public Thread Thread { get; protected set; } = null!;
-    public volatile ExitCode Code;
-    
-    private readonly int _initCount;
-    private readonly bool _launch;
-    private readonly Threads _affinity;
-    private readonly EngineContext _context = null!;
-    
-    public required Threads Affinity { get => _affinity; init { _affinity = value; _initCount++; TryLaunch(); } }
-    public required EngineContext Context { get => _context; init { _context = value; _initCount++; TryLaunch(); } }
-    public required bool Enabled { init { _launch = value; TryLaunch(); } }
-    
-    private readonly List<object> _modulesInit   = [];
-    private readonly List<object> _modulesStart  = [];
-    private readonly List<object> _modulesFixed  = [];
-    private readonly List<object> _modulesUpdate = [];
-    private readonly List<object> _modulesLate   = [];
-    private readonly List<object> _modulesShut   = [];
+	protected const float FixedDt = 1f / 120f;
+	protected const float MaxFrameDt = 0.25f;
+	protected const int MaxFixedStepsPerFrame = 8;
 
-    private readonly List<nint> _functionsInit   = [];
-    private readonly List<nint> _functionsStart  = [];
-    private readonly List<nint> _functionsFixed  = [];
-    private readonly List<nint> _functionsUpdate = [];
-    private readonly List<nint> _functionsLate   = [];
-    private readonly List<nint> _functionsShut   = [];
+	public Thread Thread { get; protected set; } = null!;
+	public volatile ExitCode Code;
 
-    private readonly List<nint> _enabledInit   = [];
-    private readonly List<nint> _enabledStart  = [];
-    private readonly List<nint> _enabledFixed  = [];
-    private readonly List<nint> _enabledUpdate = [];
-    private readonly List<nint> _enabledLate   = [];
-    private readonly List<nint> _enabledShut   = [];
-    
-    internal readonly unsafe struct PhaseData
-    {
-        public required object[] Modules { get; init; }
-        public required delegate* managed<object, bool>[] Ens { get; init; }
-        public required delegate* managed<object, void>[] Fns { get; init; }
-        
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public void Exec(bool reverse = false, bool ignoreEnabled = false)
-        {
-            var mods = Modules;
-            var ens  = Ens;
-            var fns  = Fns;
+	private static readonly ModuleLoader Loader = new() { Enabled = true };
 
-            if (!reverse)
-            {
-                for (int i = 0, n = mods.Length; i < n; i++)
-                {
-                    var m = mods[i];
-                    if (!ignoreEnabled && !ens[i](m)) continue;
-                    fns[i](m);
-                }
-            }
-            else
-            {
-                for (int i = mods.Length - 1; i >= 0; i--)
-                {
-                    var m = mods[i];
-                    if (!ignoreEnabled && !ens[i](m)) continue;
-                    fns[i](m);
-                }
-            }
-        }
-    }
-    
-    private PhaseData _initData;
-    private PhaseData _startData;
-    private PhaseData _fixedData;
-    private PhaseData _updateData;
-    private PhaseData _lateData;
-    private PhaseData _shutData;
-    
-    [MethodImpl(MethodImplOptions.AggressiveInlining)] protected void Initialize() => _initData.Exec();
-    [MethodImpl(MethodImplOptions.AggressiveInlining)] protected void Start() => _startData.Exec();
-    [MethodImpl(MethodImplOptions.AggressiveInlining)] protected void FixedUpdate() => _fixedData.Exec();
-    [MethodImpl(MethodImplOptions.AggressiveInlining)] protected void Update() => _updateData.Exec();
-    [MethodImpl(MethodImplOptions.AggressiveInlining)] protected void LateUpdate() => _lateData.Exec();
-    [MethodImpl(MethodImplOptions.AggressiveInlining)] protected void Shutdown() => _shutData.Exec(true, true);
-    
-    protected abstract void Run();
-    
-    private void TryLaunch()
-    {
-        if (!_launch || _initCount < 2)
-            return;
-        
-        switch (Affinity)
-        {
-            case Threads.Main:
-            {
-                Run();
-                break;
-            }
-            case Threads.Game:
-            case Threads.Render:
-            {
-                Thread = new Thread(Run)
-                {
-                    Name = Affinity.ToString(),
-                    IsBackground = true,
-                };
-                Thread.Start();
+	private readonly int _initCount;
+	private readonly bool _launch;
+	private readonly Threads _affinity;
+	private readonly EngineContext _context = null!;
 
-                break;
-            }
-            default:
-            {
-                throw new ArgumentOutOfRangeException(nameof(Affinity), Affinity, "Invalid thread affinity for kernel.");
-            }
-        }
-    }
+	public required Threads Affinity { get => _affinity; init { _affinity = value; _initCount++; TryLaunch(); } }
+	public required EngineContext Context { get => _context; init { _context = value; _initCount++; TryLaunch(); } }
+	public required bool Enabled { init { _launch = value; TryLaunch(); } }
 
-    public unsafe void Add<T>(T m) where T : EngineModule<T>
-    {
-        m.Context = require(Context);
-        
-        var en = EngineModule<T>.__EnabledPtr;
-        
-        foreach (var pf in EngineModule<T>.Descriptor.Overrides)
-        {
-            switch (pf.Phase)
-            {
-                case Phase.Init:     _modulesInit.Add(m);  _functionsInit.Add((nint)pf.Fn);  _enabledInit.Add(en);  break;
-                case Phase.Start:    _modulesStart.Add(m); _functionsStart.Add((nint)pf.Fn); _enabledStart.Add(en); break;
-                case Phase.Fixed:    _modulesFixed.Add(m); _functionsFixed.Add((nint)pf.Fn); _enabledFixed.Add(en); break;
-                case Phase.Update:   _modulesUpdate.Add(m);_functionsUpdate.Add((nint)pf.Fn);_enabledUpdate.Add(en);break;
-                case Phase.Late:     _modulesLate.Add(m);  _functionsLate.Add((nint)pf.Fn);  _enabledLate.Add(en);  break;
-                case Phase.Shutdown: _modulesShut.Add(m);  _functionsShut.Add((nint)pf.Fn);  _enabledShut.Add(en);  break;
-            }
-        }
-    }
-    
-    internal void LoadModules(IReadOnlyList<ModuleDescriptor> descriptors)
-    {
-        var addMI = typeof(EngineKernel).GetMethod(nameof(Add), BindingFlags.Instance | BindingFlags.Public)!;
-        foreach (var desc in descriptors)
-        {
-            var type = desc.Type;
-            var addT = addMI.MakeGenericMethod(type);
-            var instance = require(Activator.CreateInstance(type));
-            
-            foreach (var pf in desc.Overrides)
-            {
-                if (pf.Phase != Phase.Load) continue;
-                unsafe { pf.Fn(instance); }
-                break;
-            }
-            
-            addT.Invoke(this, [instance]);
-        }
-    }
-    
-    public void PostLoadModules()
-    {
-        _initData   = Flatten(_modulesInit,  _functionsInit,  _enabledInit);
-        _startData  = Flatten(_modulesStart, _functionsStart, _enabledStart);
-        _fixedData  = Flatten(_modulesFixed, _functionsFixed, _enabledFixed);
-        _updateData = Flatten(_modulesUpdate,_functionsUpdate,_enabledUpdate);
-        _lateData   = Flatten(_modulesLate,  _functionsLate,  _enabledLate);
-        _shutData   = Flatten(_modulesShut,  _functionsShut,  _enabledShut);
-    }
-    
-    private static unsafe PhaseData Flatten(List<object> mods, List<nint> fns, List<nint> ens)
-    {
-        int n = mods.Count;
-        var m = new object[n];
-        var f = new delegate* managed<object, void>[n];
-        var e = new delegate* managed<object, bool>[n];
+	internal struct DispatchTable
+	{
+		public object[] Modules { get; init; }
+		public unsafe delegate* managed<object, bool>[] Enables { get; init; }
+		public unsafe delegate* managed<object, void>[] Methods { get; init; }
+		public bool IgnoreEnabled { get; init; }
 
-        for (int i = 0; i < n; i++)
-        {
-            m[i] = mods[i];
-            f[i] = (delegate* managed<object, void>)fns[i];
-            e[i] = (delegate* managed<object, bool>)ens[i];
-        }
+		private int _count;
+		private int _rev;
 
-        mods.Clear(); fns.Clear(); ens.Clear();
+		public unsafe DispatchTable(int capacity, bool ignoreEnabled = false)
+		{
+			Modules = capacity == 0 ? [] : new object[capacity];
+			Enables = capacity == 0 ? [] : new delegate* managed<object, bool>[capacity];
+			Methods = capacity == 0 ? [] : new delegate* managed<object, void>[capacity];
+			IgnoreEnabled = ignoreEnabled;
+			_count = 0;
+			_rev = capacity - 1;
+		}
 
-        return new PhaseData
-        {
-            Modules = m,
-            Fns     = f,
-            Ens     = e
-        };
-    }
-    
-    
+		[MethodImpl(MethodImplOptions.AggressiveInlining)]
+		public unsafe void Add(object m, delegate* managed<object,bool> en, delegate* managed<object,void> fn)
+		{
+			Modules[_count] = m;
+			Enables[_count] = en;
+			Methods[_count] = fn;
+			_count++;
+		}
+
+		[MethodImpl(MethodImplOptions.AggressiveInlining)]
+		public unsafe void AddReverse(object m, delegate* managed<object,bool> en, delegate* managed<object,void> fn)
+		{
+			Modules[_rev] = m;
+			Enables[_rev] = en;
+			Methods[_rev] = fn;
+			_rev--;
+		}
+
+		[MethodImpl(MethodImplOptions.AggressiveInlining)]
+		public readonly unsafe void Execute()
+		{
+			for (int i = 0, n = Modules.Length; i < n; i++)
+			{
+				var m = Modules[i];
+				if (!IgnoreEnabled && !Enables[i](m)) continue;
+				Methods[i](m);
+			}
+		}
+	}
+
+	private DispatchTable _initTable;
+	private DispatchTable _startTable;
+	private DispatchTable _fixedTable;
+	private DispatchTable _updateTable;
+	private DispatchTable _lateTable;
+	private DispatchTable _shutTable;
+
+	[MethodImpl(MethodImplOptions.AggressiveInlining)]
+	protected void Load() => Loader.Load(this);
+
+	[MethodImpl(MethodImplOptions.AggressiveInlining)]
+	protected void Initialize() => _initTable.Execute();
+
+	[MethodImpl(MethodImplOptions.AggressiveInlining)]
+	protected void Start() => _startTable.Execute();
+
+	[MethodImpl(MethodImplOptions.AggressiveInlining)]
+	protected void FixedUpdate() => _fixedTable.Execute();
+
+	[MethodImpl(MethodImplOptions.AggressiveInlining)]
+	protected void Update() => _updateTable.Execute();
+
+	[MethodImpl(MethodImplOptions.AggressiveInlining)]
+	protected void LateUpdate() => _lateTable.Execute();
+
+	[MethodImpl(MethodImplOptions.AggressiveInlining)]
+	protected void Shutdown() => _shutTable.Execute();
+
+	protected abstract void Run();
+
+	private void TryLaunch()
+	{
+		if (!_launch || _initCount < 2)
+			return;
+
+		if (Affinity == Threads.None)
+			throw new InvalidOperationException("Kernel affinity cannot be None.");
+
+		if (Affinity != Threads.Main)
+		{
+			Thread = new(Run)
+			{
+				Name = Affinity.ToString(),
+				IsBackground = true,
+			};
+			Thread.Start();
+			return;
+		}
+
+		Run();
+	}
+
+	internal unsafe void LoadModules(Type[] types)
+	{
+		_initTable = new(types.Length);
+		_startTable = new(types.Length);
+		_fixedTable = new(types.Length);
+		_updateTable = new(types.Length);
+		_lateTable = new(types.Length);
+		_shutTable = new(types.Length, true);
+
+		foreach (var type in types)
+		{
+			var module = (IEngineModule)Activator.CreateInstance(type)!;
+			module.Context = Context;
+
+			var desc = module.Descriptor;
+			var en = (delegate* managed<object, bool>)desc.EnabledPtr;
+			var tbl = desc.Table;
+
+			if (tbl.TryGet(MethodMask.Load, out var method))
+				method(module);
+
+			if (tbl.TryGet(MethodMask.Init, out method))
+				_initTable.Add(module, en, method);
+
+			if (tbl.TryGet(MethodMask.Start, out method))
+				_startTable.Add(module, en, method);
+
+			if (tbl.TryGet(MethodMask.Fixed, out method))
+				_fixedTable.Add(module, en, method);
+
+			if (tbl.TryGet(MethodMask.Update, out method))
+				_updateTable.Add(module, en, method);
+
+			if (tbl.TryGet(MethodMask.Late, out method))
+				_lateTable.Add(module, en, method);
+
+			if (tbl.TryGet(MethodMask.Shutdown, out method))
+				_shutTable.AddReverse(module, en, method);
+		}
+	}
 }
 
 public sealed class MainKernel : EngineKernel
 {
-    protected override void Run()
-    {
-        try
-        {
-            Thread = Thread.CurrentThread;
-            
-            ModuleLoader.Load(this);
-            
-            var barrier = require(Context.Registry.Get<PhaseBarrier>());
-            var channel = require(Context.Registry.Get<IMainChannels>());
-            var ct = Context.TokenSrc.Token;
-            
-            Initialize();
-            barrier.MainInitDone.Set();
-            
-            Start();
-            barrier.MainStartDone.Set();
-            
-            var sw = Stopwatch.StartNew();
-            long frameId = 0;
-            double last = 0;
-            
-            while (!ct.IsCancellationRequested)
-            {
-                Update();
-                LateUpdate();
+	protected override void Run()
+	{
+		try
+		{
+			Thread = Thread.CurrentThread;
 
-                var now = sw.Elapsed.TotalSeconds;
-                var raw = (float)(now - last);
-                last = now;
-                var dt = clamp(raw, 0f, _maxFrameDt);
+			var barrier = require(Context.Registry.Get<PhaseBarrier>());
+			var channel = require(Context.Registry.Get<IMainChannels>());
+			var ct = Context.TokenSrc.Token;
 
-                channel.FrameWriter.Write(new FrameStart(frameId, dt), ct);
-                frameId++;
-            }
+			Load();
+			Initialize();
+			barrier.MainInitDone.Set();
 
-            Code = ExitCode.Canceled;
-        }
-        catch (OperationCanceledException)
-        {
-            Code = ExitCode.Canceled;
-        }
-        catch (Exception)
-        {
-            Code = ExitCode.Fatal;
-        }
-        finally
-        {
-            try { Shutdown(); } catch { /* ignore */ }
-        }
-    }
+			Start();
+			barrier.MainStartDone.Set();
+
+			var sw = Stopwatch.StartNew();
+			long frameId = 0;
+			double last = 0;
+
+			while (!ct.IsCancellationRequested)
+			{
+				Update();
+				LateUpdate();
+
+				var now = sw.Elapsed.TotalSeconds;
+				var raw = (float)(now - last);
+				last = now;
+				var dt = clamp(raw, 0f, MaxFrameDt);
+
+				channel.FrameWriter.Write(new(frameId, dt), ct);
+				frameId++;
+			}
+
+			Code = ExitCode.Canceled;
+		}
+		catch (OperationCanceledException)
+		{
+			Code = ExitCode.Canceled;
+		}
+		catch (Exception)
+		{
+			Code = ExitCode.Fatal;
+		}
+		finally
+		{
+			try
+			{
+				Shutdown();
+			}
+			catch
+			{
+				/* ignore */
+			}
+		}
+	}
 }
 
 public sealed class GameKernel : EngineKernel
 {
-    protected override void Run()
-    {
-        try
-        {
-            var barrier = require(Context.Registry.Get<PhaseBarrier>());
-            var channel = require(Context.Registry.Get<IGameChannels>());
-            var ct = Context.TokenSrc.Token;
-            
-            barrier.MainInitDone.Wait(ct);
-            
-            ModuleLoader.Load(this);
-            
-            Initialize();
-            barrier.GameInitDone.Set();
-                
-            barrier.MainStartDone.Wait(ct);
-            Start();
-            barrier.GameStartDone.Set();
+	protected override void Run()
+	{
+		try
+		{
+			var barrier = require(Context.Registry.Get<PhaseBarrier>());
+			var channel = require(Context.Registry.Get<IGameChannels>());
+			var ct = Context.TokenSrc.Token;
 
-            float accumulator = 0f;
-            int simFrame = 0;
-            
-            while (!ct.IsCancellationRequested)
-            {
-                var start = channel.FrameReader.Read(ct);
+			barrier.MainInitDone.Wait(ct);
+			Load();
+			Initialize();
+			barrier.GameInitDone.Set();
 
-                var dt = clamp(start.Dt, 0f, _maxFrameDt);
-                accumulator += dt;
+			barrier.MainStartDone.Wait(ct);
+			Start();
+			barrier.GameStartDone.Set();
 
-                int steps = 0;
-                while (accumulator >= _fixedDt && steps < _maxFixedStepsPerFrame)
-                {
-                    Context.DeltaTime = _fixedDt;
-                    FixedUpdate();
-                    accumulator -= _fixedDt;
-                    simFrame++;
-                    steps++;
-                }
+			float accumulator = 0f;
+			int simFrame = 0;
 
-                Context.DeltaTime = dt;
-                Update();
-                LateUpdate();
+			while (!ct.IsCancellationRequested)
+			{
+				var start = channel.FrameReader.Read(ct);
 
-                channel.SceneWriter.Publish(new SceneView(simFrame, clamp(accumulator / _fixedDt, 0f, 1f)));
-            }
-                
-            Code = ExitCode.Canceled;
-        }
-        catch (OperationCanceledException)
-        {
-            Code = ExitCode.Canceled;
-        }
-        catch (Exception)
-        {
-            Code = ExitCode.Fatal;
-        }
-        finally
-        {
-            try { Shutdown(); } catch { /* ignore */ }
-        }
-    }
+				var dt = clamp(start.Dt, 0f, MaxFrameDt);
+				accumulator += dt;
+
+				int steps = 0;
+				while (accumulator >= FixedDt && steps < MaxFixedStepsPerFrame)
+				{
+					Context.DeltaTime = FixedDt;
+					FixedUpdate();
+					accumulator -= FixedDt;
+					simFrame++;
+					steps++;
+				}
+
+				Context.DeltaTime = dt;
+				Update();
+				LateUpdate();
+
+				channel.SceneWriter.Publish(new(simFrame, clamp(accumulator / FixedDt, 0f, 1f)));
+			}
+
+			Code = ExitCode.Canceled;
+		}
+		catch (OperationCanceledException)
+		{
+			Code = ExitCode.Canceled;
+		}
+		catch (Exception)
+		{
+			Code = ExitCode.Fatal;
+		}
+		finally
+		{
+			try
+			{
+				Shutdown();
+			}
+			catch
+			{
+				/* ignore */
+			}
+		}
+	}
 }
 
 public sealed class RenderKernel : EngineKernel
 {
-    protected override void Run()
-    {
-        try
-        {
-            var barrier = require(Context.Registry.Get<PhaseBarrier>());
-            var channel = require(Context.Registry.Get<IRenderChannels>());
-            var ct = Context.TokenSrc.Token;
-            
-            barrier.GameInitDone.Wait(ct);
-            
-            ModuleLoader.Load(this);
-            
-            Initialize();
-            barrier.RenderInitDone.Set();
-                
-            barrier.GameStartDone.Wait(ct);
-            Start();
-            barrier.RenderStartDone.Set();
-            
-            while (!ct.IsCancellationRequested)
-            {
-                channel.SceneReader.Read();
+	protected override void Run()
+	{
+		try
+		{
+			var barrier = require(Context.Registry.Get<PhaseBarrier>());
+			var channel = require(Context.Registry.Get<IRenderChannels>());
+			var ct = Context.TokenSrc.Token;
 
-                Update();
-                LateUpdate();
-            }
-                
-            Code = ExitCode.Canceled;
-        }
-        catch (OperationCanceledException)
-        {
-            Code = ExitCode.Canceled;
-        }
-        catch (Exception)
-        {
-            Code = ExitCode.Fatal;
-        }
-        finally
-        {
-            try { Shutdown(); } catch { /* ignore */ }
-        }
-    }
+			barrier.GameInitDone.Wait(ct);
+			Load();
+			Initialize();
+			barrier.RenderInitDone.Set();
+
+			barrier.GameStartDone.Wait(ct);
+			Start();
+			barrier.RenderStartDone.Set();
+
+			while (!ct.IsCancellationRequested)
+			{
+				channel.SceneReader.Read();
+
+				Update();
+				LateUpdate();
+			}
+
+			Code = ExitCode.Canceled;
+		}
+		catch (OperationCanceledException)
+		{
+			Code = ExitCode.Canceled;
+		}
+		catch (Exception)
+		{
+			Code = ExitCode.Fatal;
+		}
+		finally
+		{
+			try
+			{
+				Shutdown();
+			}
+			catch
+			{
+				/* ignore */
+			}
+		}
+	}
 }

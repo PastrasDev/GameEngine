@@ -5,151 +5,114 @@ using System.Reflection;
 
 namespace Engine.Core;
 
-public static class ModuleLoader
+public sealed class ModuleLoader
 {
-    public static void Load(EngineKernel kernel)
-    {
-        require(kernel);
-        
-        // 1) Discover all EngineModule<> types and read their static descriptors.
-        var allDescriptors = FindDescriptors();
+	private static Type[] _mainModules = [];
+	private static Type[] _gameModules = [];
+	private static Type[] _renderModules = [];
 
-        // 2) Keep only modules that match this kernel’s thread affinity.
-        var local = allDescriptors.Where(d => d.Affinity == kernel.Affinity).ToList();
+	public required bool Enabled
+	{
+		init
+		{
+			if (!value) return;
+			var all = FindModuleTypes();
+			_mainModules = SortTypes(all.Where(t => GetAffinity(t) == Threads.Main).ToList()).ToArray();
+			_gameModules = SortTypes(all.Where(t => GetAffinity(t) == Threads.Game).ToList()).ToArray();
+			_renderModules = SortTypes(all.Where(t => GetAffinity(t) == Threads.Render).ToList()).ToArray();
+		}
+	}
 
-        // 3) Topologically sort by dependencies (considering only in-affinity dependencies).
-        var sorted = Sort(local);
+	public void Load(EngineKernel kernel)
+	{
+		require(kernel);
 
-        // 4) Hand the ordered list to the kernel; do NOT instantiate here.
-        kernel.LoadModules(sorted);
-        kernel.PostLoadModules();
-    }
-    
-    private static List<ModuleDescriptor> FindDescriptors()
-    {
-        var results = new List<ModuleDescriptor>(64);
+		Type[] selected = kernel.Affinity switch
+		{
+			Threads.Main => _mainModules,
+			Threads.Game => _gameModules,
+			Threads.Render => _renderModules,
+			_ => throw new InvalidOperationException($"Unsupported kernel affinity: {kernel.Affinity}")
+		};
 
-        foreach (var asm in AppDomain.CurrentDomain.GetAssemblies())
-        {
-            Type[] types;
-            try { types = asm.GetTypes(); }
-            catch (ReflectionTypeLoadException rtle) { types = rtle.Types.Where(t => t is not null).ToArray()!; }
-            catch { continue; }
+		kernel.LoadModules(selected);
+	}
 
-            foreach (var t in types)
-            {
-                if (!t.IsClass || t.IsAbstract) continue;
+	private static List<Type> FindModuleTypes()
+	{
+		var results = new List<Type>(64);
 
-                // Must directly derive from EngineModule<TSelf> (closed)
-                var bt = t.BaseType;
-                if (bt is null || !bt.IsGenericType) continue;
-                if (bt.GetGenericTypeDefinition() != typeof(EngineModule<>)) continue;
+		foreach (var asm in AppDomain.CurrentDomain.GetAssemblies())
+		{
+			Type[] types;
+			try
+			{
+				types = asm.GetTypes();
+			}
+			catch (ReflectionTypeLoadException rtle)
+			{
+				types = rtle.Types.Where(t => t is { }).ToArray()!;
+			}
+			catch
+			{
+				continue;
+			}
 
-                // Static field "Descriptor" lives on the *base* closed generic type (EngineModule<TSelf>)
-                var f = bt.GetField("Descriptor", BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static);
+			foreach (var t in types)
+			{
+				if (!t.IsClass || t.IsAbstract) continue;
+				var bt = t.BaseType;
+				if (bt is null || !bt.IsGenericType) continue;
+				if (bt.GetGenericTypeDefinition() != typeof(EngineModule<>)) continue;
 
-                if (f?.GetValue(null) is ModuleDescriptor md)
-                    results.Add(md);
-            }
-        }
+				results.Add(t);
+			}
+		}
 
-        return results;
-    }
-    
-    private static List<ModuleDescriptor> Sort(List<ModuleDescriptor> list)
-    {
-        if (list.Count == 0) return [];
+		return results;
+	}
 
-        // Type → descriptor
-        var map = list.ToDictionary(d => d.Type);
+	private static Threads GetAffinity(Type t) => t.GetCustomAttribute<AffinityAttribute>(inherit: false)?.Threads ?? Threads.None;
 
-        // Build adjacency + indegrees, but only for dependencies that are present in this set
-        var edges = new Dictionary<Type, List<Type>>(map.Count);
-        var indeg = new Dictionary<Type, int>(map.Count);
-        foreach (var d in list)
-        {
-            indeg[d.Type] = 0;
-            edges[d.Type] = [];
-        }
+	private static Type[] GetDeps(Type t) => t.GetCustomAttributes<RequiresAttribute>(inherit: false).SelectMany(a => a.Types ?? []).ToArray();
 
-        foreach (var d in list)
-        {
-            var deps = d.Dependencies ?? [];
-            foreach (var dep in deps)
-            {
-                if (!map.ContainsKey(dep)) continue; // ignore out-of-affinity or external deps
-                edges[dep].Add(d.Type);
-                indeg[d.Type] = indeg[d.Type] + 1;
-            }
-        }
+	private static List<Type> SortTypes(List<Type> list)
+	{
+		if (list.Count == 0) return [];
 
-        // Kahn’s algorithm
-        var q = new Queue<Type>(indeg.Where(kv => kv.Value == 0).Select(kv => kv.Key));
-        var order = new List<ModuleDescriptor>(list.Count);
+		var set = new HashSet<Type>(list);
+		var indeg = new Dictionary<Type, int>(list.Count);
+		var edges = new Dictionary<Type, List<Type>>(list.Count);
 
-        while (q.Count > 0)
-        {
-            var u = q.Dequeue();
-            order.Add(map[u]);
+		foreach (var t in list)
+		{
+			indeg[t] = 0;
+			edges[t] = [];
+		}
 
-            foreach (var v in edges[u])
-            {
-                indeg[v] -= 1;
-                if (indeg[v] == 0) q.Enqueue(v);
-            }
-        }
+		foreach (var t in list)
+		{
+			foreach (var dep in GetDeps(t))
+			{
+				if (!set.Contains(dep)) continue;
+				edges[dep].Add(t);
+				indeg[t] += 1;
+			}
+		}
 
-        return order.Count == list.Count ? order : throw new InvalidOperationException($"Cyclical module dependency detected: {DescribeCycle(edges, indeg)}");
-    }
-    
-    private static string DescribeCycle(Dictionary<Type, List<Type>> edges, Dictionary<Type, int> indeg)
-    {
-        // Nodes with indegree > 0 are part of at least one cycle or blocked by a cycle.
-        var nodes = indeg.Where(kv => kv.Value > 0).Select(kv => kv.Key).ToHashSet();
+		var q = new Queue<Type>(indeg.Where(kv => kv.Value == 0).Select(kv => kv.Key).OrderBy(t => t.FullName));
+		var order = new List<Type>(list.Count);
 
-        // DFS to find a single cycle and stringify it.
-        var color = new Dictionary<Type, int>(); // 0=unvisited,1=visiting,2=done
-        var stack = new Stack<Type>();
+		while (q.Count > 0)
+		{
+			var u = q.Dequeue();
+			order.Add(u);
+			foreach (var v in edges[u])
+			{
+				if (--indeg[v] == 0) q.Enqueue(v);
+			}
+		}
 
-        foreach (var n in nodes)
-        {
-            if (Visit(n)) break;
-        }
-
-        return "<unresolved cycle>";
-
-        bool Visit(Type u)
-        {
-            if (!nodes.Contains(u)) return false;
-            if (color.TryGetValue(u, out var c))
-            {
-                if (c == 1)
-                {
-                    // Found a back-edge; unwind stack to build the cycle
-                    var cycle = new List<string> { TypeName(u) };
-                    foreach (var t in stack)
-                    {
-                        cycle.Add(TypeName(t));
-                        if (t == u) break;
-                    }
-                    cycle.Reverse();
-                    throw new InvalidOperationException("  " + string.Join(" -> ", cycle));
-                }
-                if (c == 2) return false;
-            }
-
-            color[u] = 1;
-            stack.Push(u);
-            if (edges.TryGetValue(u, out var outs))
-            {
-                foreach (var v in outs) 
-                    if (Visit(v)) return true;
-            }
-            stack.Pop();
-            color[u] = 2;
-            return false;
-        }
-
-        static string TypeName(Type t) => t.FullName ?? t.Name;
-    }
+		return order.Count != list.Count ? throw new InvalidOperationException("Cyclical module dependency detected.") : order;
+	}
 }

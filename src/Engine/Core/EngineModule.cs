@@ -4,92 +4,155 @@ using System.Runtime.CompilerServices;
 
 namespace Engine.Core;
 
-internal readonly unsafe struct PhaseFn(Phase phase, delegate* managed<object, void> fn)
+public interface IEngineModule
 {
-    public readonly Phase Phase = phase;
-    public readonly delegate* managed<object, void> Fn = fn;
+	ModuleDescriptor Descriptor { get; }
+	EngineContext Context { get; set; }
+	bool Enabled { get; set; }
+
+	void Load();
+	void Initialize();
+	void Start();
+	void FixedUpdate();
+	void Update();
+	void LateUpdate();
+	void Shutdown();
 }
 
-internal readonly record struct ModuleDescriptor
+public abstract class EngineModule<TSelf> : IEngineModule where TSelf : EngineModule<TSelf>
 {
-    public required Type Type { get; init; }
-    public required Threads Affinity { get; init; }
-    public required Type[]? Dependencies { get; init; }
-    public required PhaseFn[] Overrides { get; init; }
+	public virtual void Load() { }
+	public virtual void Initialize() { }
+	public virtual void Start() { }
+	public virtual void FixedUpdate() { }
+	public virtual void Update() { }
+	public virtual void LateUpdate() { }
+	public virtual void Shutdown() { }
+
+	public EngineContext Context { get; set; } = null!;
+	public bool Enabled { get; set; } = true;
+
+	private static readonly ModuleDescriptor Descriptor;
+	ModuleDescriptor IEngineModule.Descriptor => Descriptor;
+
+	static unsafe EngineModule()
+	{
+		var type = typeof(TSelf);
+		var mask = ComputeMethodMask(type);
+
+		var methodSet = new MethodSet
+		{
+			Load = &__Load,
+			Initialize = &__Init,
+			Start = &__Start,
+			FixedUpdate = &__Fixed,
+			Update = &__Update,
+			LateUpdate = &__Late,
+			Shutdown = &__Shutdown
+		};
+
+		Descriptor = new()
+		{
+			Type = type,
+			Affinity = type.GetCustomAttribute<AffinityAttribute>()?.Threads ?? Threads.None,
+			Dependencies = type.GetCustomAttribute<RequiresAttribute>()?.Types ?? [],
+			Table = new(mask, methodSet),
+			Mask = mask,
+			EnabledPtr = (nint)(delegate* managed<object, bool>)&__Enabled
+		};
+	}
+
+	private static bool __Enabled(object o) => Unsafe.As<TSelf>(o).Enabled;
+	private static void __Load(object m) => Unsafe.As<TSelf>(m).Load();
+	private static void __Init(object m) => Unsafe.As<TSelf>(m).Initialize();
+	private static void __Start(object m) => Unsafe.As<TSelf>(m).Start();
+	private static void __Fixed(object m) => Unsafe.As<TSelf>(m).FixedUpdate();
+	private static void __Update(object m) => Unsafe.As<TSelf>(m).Update();
+	private static void __Late(object m) => Unsafe.As<TSelf>(m).LateUpdate();
+	private static void __Shutdown(object m) => Unsafe.As<TSelf>(m).Shutdown();
+
+	private static MethodMask ComputeMethodMask(Type type)
+	{
+		const BindingFlags flags = BindingFlags.Instance | BindingFlags.Public | BindingFlags.DeclaredOnly;
+		MethodMask mask = default;
+		SetMaskBit(type, ref mask, nameof(IEngineModule.Load), MethodMask.Load);
+		SetMaskBit(type, ref mask, nameof(IEngineModule.Initialize), MethodMask.Init);
+		SetMaskBit(type, ref mask, nameof(IEngineModule.Start), MethodMask.Start);
+		SetMaskBit(type, ref mask, nameof(IEngineModule.FixedUpdate), MethodMask.Fixed);
+		SetMaskBit(type, ref mask, nameof(IEngineModule.Update), MethodMask.Update);
+		SetMaskBit(type, ref mask, nameof(IEngineModule.LateUpdate), MethodMask.Late);
+		SetMaskBit(type, ref mask, nameof(IEngineModule.Shutdown), MethodMask.Shutdown);
+
+		return mask;
+
+		static void SetMaskBit(Type t, ref MethodMask m, string methodName, MethodMask bit)
+		{
+			if (t.GetMethod(methodName, flags) is { }) m |= bit;
+		}
+	}
 }
 
-public abstract class EngineModule<TSelf> where TSelf : EngineModule<TSelf>
+public readonly record struct ModuleDescriptor
 {
-    public virtual void Load() { }
-    public virtual void Initialize() { }
-    public virtual void Start() { }
-    public virtual void FixedUpdate() { }
-    public virtual void Update() { }
-    public virtual void LateUpdate() { }
-    public virtual void Shutdown() { }
-    
-    internal static readonly ModuleDescriptor Descriptor = new()
-    {
-        Type = typeof(TSelf),
-        Affinity = typeof(TSelf).GetCustomAttribute<AffinityAttribute>()?.Threads ?? Threads.None,
-        Dependencies = typeof(TSelf).GetCustomAttribute<RequiresAttribute>()?.Types ?? [],
-        Overrides = BuildPhaseFns()
-    };
-    
-    /// <summary>Per-thread context; set by the kernel before any lifecycle call.</summary>
-    public EngineContext Context { get; internal set; } = null!;
-    
-    /// Determines whether this modules lifecycle methods are called beyond Load.
-    public bool Enabled { get; set; } = true;
-    
-    internal static readonly unsafe nint __EnabledPtr = (nint)(delegate* managed<object, bool>)&__Enabled;
-    
-    [MethodImpl(MethodImplOptions.AggressiveInlining)] private static bool __Enabled(object o) => Unsafe.As<TSelf>(o).Enabled;
-    [MethodImpl(MethodImplOptions.AggressiveInlining)] private static void __Load(object m) => Unsafe.As<TSelf>(m).Load();
-    [MethodImpl(MethodImplOptions.AggressiveInlining)] private static void __Init(object m) => Unsafe.As<TSelf>(m).Initialize();
-    [MethodImpl(MethodImplOptions.AggressiveInlining)] private static void __Start(object m) => Unsafe.As<TSelf>(m).Start();
-    [MethodImpl(MethodImplOptions.AggressiveInlining)] private static void __Fixed(object m) => Unsafe.As<TSelf>(m).FixedUpdate();
-    [MethodImpl(MethodImplOptions.AggressiveInlining)] private static void __Update(object m) => Unsafe.As<TSelf>(m).Update();
-    [MethodImpl(MethodImplOptions.AggressiveInlining)] private static void __Late(object m) => Unsafe.As<TSelf>(m).LateUpdate();
-    [MethodImpl(MethodImplOptions.AggressiveInlining)] private static void __Shutdown(object m) => Unsafe.As<TSelf>(m).Shutdown();
-    
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static unsafe PhaseFn[] BuildPhaseFns()
-    {
-        var m = ComputePhases();
-        int n = 0;
-        Span<PhaseFn> tmp = stackalloc PhaseFn[7];
-        if ((m & Phase.Load) != 0) tmp[n++] = new PhaseFn(Phase.Load, &__Load);
-        if ((m & Phase.Init) != 0) tmp[n++] = new PhaseFn(Phase.Init, &__Init);
-        if ((m & Phase.Start) != 0) tmp[n++] = new PhaseFn(Phase.Start, &__Start);
-        if ((m & Phase.Fixed) != 0) tmp[n++] = new PhaseFn(Phase.Fixed, &__Fixed);
-        if ((m & Phase.Update) != 0) tmp[n++] = new PhaseFn(Phase.Update, &__Update);
-        if ((m & Phase.Late) != 0) tmp[n++] = new PhaseFn(Phase.Late, &__Late);
-        if ((m & Phase.Shutdown) != 0) tmp[n++] = new PhaseFn(Phase.Shutdown, &__Shutdown);
-        return tmp[..n].ToArray();
-    }
-    
-    /// <summary>
-    /// Determine which lifecycle methods are overridden by TSelf.
-    /// We no longer compare against a non-generic base; instead we ask:
-    /// “Is the most-derived method declared on TSelf?”
-    /// If yes → it’s overridden.
-    /// </summary>
-    private static Phase ComputePhases()
-    {
-        const BindingFlags flags = BindingFlags.Instance | BindingFlags.Public;
-        var t = typeof(TSelf);
-        Phase mask = Phase.None;
-        if (IsOverridden(t.GetMethod(nameof(Load), flags), t)) mask |= Phase.Load;
-        if (IsOverridden(t.GetMethod(nameof(Initialize), flags), t)) mask |= Phase.Init;
-        if (IsOverridden(t.GetMethod(nameof(Start), flags), t)) mask |= Phase.Start;
-        if (IsOverridden(t.GetMethod(nameof(FixedUpdate), flags), t)) mask |= Phase.Fixed;
-        if (IsOverridden(t.GetMethod(nameof(Update), flags), t)) mask |= Phase.Update;
-        if (IsOverridden(t.GetMethod(nameof(LateUpdate), flags), t)) mask |= Phase.Late;
-        if (IsOverridden(t.GetMethod(nameof(Shutdown), flags), t)) mask |= Phase.Shutdown;
-        return mask;
+	public required Type Type { get; init; }
+	public required Threads Affinity { get; init; }
+	public required Type[]? Dependencies { get; init; }
+	public required MethodTable Table { get; init; }
+	public required MethodMask Mask { get; init; }
+	public required nint EnabledPtr { get; init; }
+}
 
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        static bool IsOverridden(MethodInfo? mi, Type self) => mi is not null && mi.DeclaringType == self;
-    }
+public readonly unsafe struct MethodSet
+{
+	public delegate* managed<object, void> Load { get; init; }
+	public delegate* managed<object, void> Initialize { get; init; }
+	public delegate* managed<object, void> Start { get; init; }
+	public delegate* managed<object, void> FixedUpdate { get; init; }
+	public delegate* managed<object, void> Update { get; init; }
+	public delegate* managed<object, void> LateUpdate { get; init; }
+	public delegate* managed<object, void> Shutdown { get; init; }
+}
+
+public readonly unsafe struct MethodTable
+{
+	private readonly delegate* managed<object, void>[] _table;
+
+	public MethodTable(MethodMask mask, MethodSet set)
+	{
+		_table = new delegate* managed<object, void>[7];
+		if ((mask & MethodMask.Load) != 0) _table[0] = set.Load;
+		if ((mask & MethodMask.Init) != 0) _table[1] = set.Initialize;
+		if ((mask & MethodMask.Start) != 0) _table[2] = set.Start;
+		if ((mask & MethodMask.Fixed) != 0) _table[3] = set.FixedUpdate;
+		if ((mask & MethodMask.Update) != 0) _table[4] = set.Update;
+		if ((mask & MethodMask.Late) != 0) _table[5] = set.LateUpdate;
+		if ((mask & MethodMask.Shutdown) != 0) _table[6] = set.Shutdown;
+	}
+
+	[MethodImpl(MethodImplOptions.AggressiveInlining)]
+	private static int Idx(MethodMask s) => s switch
+	{
+		MethodMask.Load => 0,
+		MethodMask.Init => 1,
+		MethodMask.Start => 2,
+		MethodMask.Fixed => 3,
+		MethodMask.Update => 4,
+		MethodMask.Late => 5,
+		MethodMask.Shutdown => 6,
+		_ => -1
+	};
+
+	[MethodImpl(MethodImplOptions.AggressiveInlining)]
+	public bool TryGet(MethodMask methodMask, out delegate* managed<object, void> fn)
+	{
+		int i = Idx(methodMask);
+		if ((uint)i >= 7u)
+		{
+			fn = default;
+			return false;
+		}
+
+		fn = _table[i];
+		return fn != null;
+	}
 }
