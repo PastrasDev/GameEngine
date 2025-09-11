@@ -320,13 +320,13 @@ public static class Channels
 
 		var bundle = new EngineChannels
 		{
-			Frame = new() { Reader = framePort, Writer = framePort },
-			Input = new() { Reader = inputPort, Writer = inputPort },
-			Scene = new() { Reader = viewPort, Writer = viewPort },
+			Frame = new FrameChannel { Reader = framePort, Writer = framePort },
+			Input = new InputChannel { Reader = inputPort, Writer = inputPort },
+			Scene = new SceneChannel { Reader = viewPort, Writer = viewPort },
 			RenderCommands = ctrlPort
 		};
 
-		return (bundle, new(bundle), new(bundle), new(bundle));
+		return (bundle, new MainChannelsView(bundle), new GameChannelsView(bundle), new RenderChannelsView(bundle));
 	}
 }
 

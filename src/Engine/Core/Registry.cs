@@ -46,7 +46,7 @@ public sealed class Registry
 	public Registry ReadOnly
 	{
 		[MethodImpl(MethodImplOptions.AggressiveInlining)]
-		get => _cachedReadOnly ??= new(this, AccessType.ReadOnly);
+		get => _cachedReadOnly ??= new Registry(this, AccessType.ReadOnly);
 	}
 
 	/// <summary>
@@ -59,7 +59,7 @@ public sealed class Registry
 		get
 		{
 			require(Access == AccessType.ReadWrite, true);
-			return new(ReadOnly, AccessType.ReadWrite);
+			return new Registry(ReadOnly, AccessType.ReadWrite);
 		}
 	}
 
@@ -227,7 +227,7 @@ public sealed class Registry
 			var (nk, nv, count) = Rebuild(cap, skipKey: null, replaceKey: null, replaceVal: null);
 			Insert(nk, nv, key, value);
 			added = true;
-			return new(nk, nv, count + 1);
+			return new ServiceMap(nk, nv, count + 1);
 		}
 
 		[MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -241,7 +241,7 @@ public sealed class Registry
 
 			var (nk, nv, count) = Rebuild(_keys.Length, skipKey: null, replaceKey: key, replaceVal: value);
 			replaced = true;
-			return new(nk, nv, count);
+			return new ServiceMap(nk, nv, count);
 		}
 
 		[MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -258,7 +258,7 @@ public sealed class Registry
 
 			var (nk, nv, count) = Rebuild(cap, skipKey: key, replaceKey: null, replaceVal: null);
 			removed = true;
-			return new(nk, nv, count);
+			return new ServiceMap(nk, nv, count);
 		}
 
 		[MethodImpl(MethodImplOptions.AggressiveInlining)]

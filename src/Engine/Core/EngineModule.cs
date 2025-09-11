@@ -6,7 +6,7 @@ namespace Engine.Core;
 
 public interface IEngineModule
 {
-	ModuleDescriptor Descriptor { get; }
+	EngineModuleDescriptor Descriptor { get; }
 	EngineContext Context { get; set; }
 	bool Enabled { get; set; }
 
@@ -19,8 +19,39 @@ public interface IEngineModule
 	void Shutdown();
 }
 
-public abstract class EngineModule<TSelf> : IEngineModule where TSelf : EngineModule<TSelf>
+public abstract class EngineModule<TSelf> : IEngineModule, IDescriptor<TSelf, EngineModuleDescriptor> where TSelf : EngineModule<TSelf>
 {
+	static unsafe EngineModule()
+	{
+		var type = typeof(TSelf);
+		var mask = ComputeMethodMask(type);
+
+		DescriptorRegistry.Register<TSelf, EngineModuleDescriptor>(Descriptor = new EngineModuleDescriptor
+		{
+			Type = type,
+			Affinity = type.GetCustomAttribute<AffinityAttribute>()?.Threads ?? Threads.None,
+			Dependencies = type.GetCustomAttribute<RequiresAttribute>()?.Types ?? [],
+			Table = new MethodTable(mask, new MethodSet
+			{
+				Load = &__Load,
+				Initialize = &__Init,
+				Start = &__Start,
+				FixedUpdate = &__Fixed,
+				Update = &__Update,
+				LateUpdate = &__Late,
+				Shutdown = &__Shutdown
+			}),
+			Mask = mask,
+		});
+	}
+
+	private static readonly EngineModuleDescriptor Descriptor;
+	EngineModuleDescriptor IEngineModule.Descriptor => Descriptor;
+	public static EngineModuleDescriptor Describe() => Descriptor;
+
+	public EngineContext Context { get; set; } = null!;
+	public bool Enabled { get; set; } = true;
+
 	public virtual void Load() { }
 	public virtual void Initialize() { }
 	public virtual void Start() { }
@@ -29,47 +60,13 @@ public abstract class EngineModule<TSelf> : IEngineModule where TSelf : EngineMo
 	public virtual void LateUpdate() { }
 	public virtual void Shutdown() { }
 
-	public EngineContext Context { get; set; } = null!;
-	public bool Enabled { get; set; } = true;
-
-	private static readonly ModuleDescriptor Descriptor;
-	ModuleDescriptor IEngineModule.Descriptor => Descriptor;
-
-	static unsafe EngineModule()
-	{
-		var type = typeof(TSelf);
-		var mask = ComputeMethodMask(type);
-
-		var methodSet = new MethodSet
-		{
-			Load = &__Load,
-			Initialize = &__Init,
-			Start = &__Start,
-			FixedUpdate = &__Fixed,
-			Update = &__Update,
-			LateUpdate = &__Late,
-			Shutdown = &__Shutdown
-		};
-
-		Descriptor = new()
-		{
-			Type = type,
-			Affinity = type.GetCustomAttribute<AffinityAttribute>()?.Threads ?? Threads.None,
-			Dependencies = type.GetCustomAttribute<RequiresAttribute>()?.Types ?? [],
-			Table = new(mask, methodSet),
-			Mask = mask,
-			EnabledPtr = (nint)(delegate* managed<object, bool>)&__Enabled
-		};
-	}
-
-	private static bool __Enabled(object o) => Unsafe.As<TSelf>(o).Enabled;
-	private static void __Load(object m) => Unsafe.As<TSelf>(m).Load();
-	private static void __Init(object m) => Unsafe.As<TSelf>(m).Initialize();
-	private static void __Start(object m) => Unsafe.As<TSelf>(m).Start();
-	private static void __Fixed(object m) => Unsafe.As<TSelf>(m).FixedUpdate();
-	private static void __Update(object m) => Unsafe.As<TSelf>(m).Update();
-	private static void __Late(object m) => Unsafe.As<TSelf>(m).LateUpdate();
-	private static void __Shutdown(object m) => Unsafe.As<TSelf>(m).Shutdown();
+	private static void __Load(IEngineModule m) => Unsafe.As<TSelf>(m).Load();
+	private static void __Init(IEngineModule m) => Unsafe.As<TSelf>(m).Initialize();
+	private static void __Start(IEngineModule m) => Unsafe.As<TSelf>(m).Start();
+	private static void __Fixed(IEngineModule m) => Unsafe.As<TSelf>(m).FixedUpdate();
+	private static void __Update(IEngineModule m) => Unsafe.As<TSelf>(m).Update();
+	private static void __Late(IEngineModule m) => Unsafe.As<TSelf>(m).LateUpdate();
+	private static void __Shutdown(IEngineModule m) => Unsafe.As<TSelf>(m).Shutdown();
 
 	private static MethodMask ComputeMethodMask(Type type)
 	{
@@ -92,34 +89,33 @@ public abstract class EngineModule<TSelf> : IEngineModule where TSelf : EngineMo
 	}
 }
 
-public readonly record struct ModuleDescriptor
+public readonly record struct EngineModuleDescriptor
 {
 	public required Type Type { get; init; }
 	public required Threads Affinity { get; init; }
 	public required Type[]? Dependencies { get; init; }
 	public required MethodTable Table { get; init; }
 	public required MethodMask Mask { get; init; }
-	public required nint EnabledPtr { get; init; }
 }
 
 public readonly unsafe struct MethodSet
 {
-	public delegate* managed<object, void> Load { get; init; }
-	public delegate* managed<object, void> Initialize { get; init; }
-	public delegate* managed<object, void> Start { get; init; }
-	public delegate* managed<object, void> FixedUpdate { get; init; }
-	public delegate* managed<object, void> Update { get; init; }
-	public delegate* managed<object, void> LateUpdate { get; init; }
-	public delegate* managed<object, void> Shutdown { get; init; }
+	public delegate* managed<IEngineModule, void> Load { get; init; }
+	public delegate* managed<IEngineModule, void> Initialize { get; init; }
+	public delegate* managed<IEngineModule, void> Start { get; init; }
+	public delegate* managed<IEngineModule, void> FixedUpdate { get; init; }
+	public delegate* managed<IEngineModule, void> Update { get; init; }
+	public delegate* managed<IEngineModule, void> LateUpdate { get; init; }
+	public delegate* managed<IEngineModule, void> Shutdown { get; init; }
 }
 
 public readonly unsafe struct MethodTable
 {
-	private readonly delegate* managed<object, void>[] _table;
+	private readonly delegate* managed<IEngineModule, void>[] _table;
 
 	public MethodTable(MethodMask mask, MethodSet set)
 	{
-		_table = new delegate* managed<object, void>[7];
+		_table = new delegate* managed<IEngineModule, void>[7];
 		if ((mask & MethodMask.Load) != 0) _table[0] = set.Load;
 		if ((mask & MethodMask.Init) != 0) _table[1] = set.Initialize;
 		if ((mask & MethodMask.Start) != 0) _table[2] = set.Start;
@@ -143,7 +139,7 @@ public readonly unsafe struct MethodTable
 	};
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	public bool TryGet(MethodMask methodMask, out delegate* managed<object, void> fn)
+	public bool TryGet(MethodMask methodMask, out delegate* managed<IEngineModule, void> fn)
 	{
 		int i = Idx(methodMask);
 		if ((uint)i >= 7u)

@@ -1,6 +1,7 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.Diagnostics;
-using System.Reflection;
+using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Threading;
 
@@ -8,6 +9,10 @@ namespace Engine.Core;
 
 public sealed class PhaseBarrier
 {
+	public readonly ManualResetEventSlim MainLoadDone = new(false);
+	public readonly ManualResetEventSlim GameLoadDone = new(false);
+	public readonly ManualResetEventSlim RenderLoadDone = new(false);
+
 	public readonly ManualResetEventSlim MainInitDone = new(false);
 	public readonly ManualResetEventSlim GameInitDone = new(false);
 	public readonly ManualResetEventSlim RenderInitDone = new(false);
@@ -26,8 +31,6 @@ public abstract class EngineKernel
 	public Thread Thread { get; protected set; } = null!;
 	public volatile ExitCode Code;
 
-	private static readonly ModuleLoader Loader = new() { Enabled = true };
-
 	private readonly int _initCount;
 	private readonly bool _launch;
 	private readonly Threads _affinity;
@@ -39,38 +42,34 @@ public abstract class EngineKernel
 
 	internal struct DispatchTable
 	{
-		public object[] Modules { get; init; }
-		public unsafe delegate* managed<object, bool>[] Enables { get; init; }
-		public unsafe delegate* managed<object, void>[] Methods { get; init; }
-		public bool IgnoreEnabled { get; init; }
+		public IEngineModule[] Modules { get; init; }
+		public unsafe delegate* managed<IEngineModule, void>[] Methods { get; init; }
 
 		private int _count;
 		private int _rev;
 
-		public unsafe DispatchTable(int capacity, bool ignoreEnabled = false)
+		[MethodImpl(MethodImplOptions.AggressiveInlining)]
+		public unsafe DispatchTable(int capacity)
 		{
-			Modules = capacity == 0 ? [] : new object[capacity];
-			Enables = capacity == 0 ? [] : new delegate* managed<object, bool>[capacity];
-			Methods = capacity == 0 ? [] : new delegate* managed<object, void>[capacity];
-			IgnoreEnabled = ignoreEnabled;
+			Modules = capacity == 0 ? [] : new IEngineModule[capacity];
+			Methods = capacity == 0 ? [] : new delegate* managed<IEngineModule, void>[capacity];
+
 			_count = 0;
 			_rev = capacity - 1;
 		}
 
 		[MethodImpl(MethodImplOptions.AggressiveInlining)]
-		public unsafe void Add(object m, delegate* managed<object,bool> en, delegate* managed<object,void> fn)
+		public unsafe void Add(IEngineModule m, delegate* managed<IEngineModule, void> fn)
 		{
 			Modules[_count] = m;
-			Enables[_count] = en;
 			Methods[_count] = fn;
 			_count++;
 		}
 
 		[MethodImpl(MethodImplOptions.AggressiveInlining)]
-		public unsafe void AddReverse(object m, delegate* managed<object,bool> en, delegate* managed<object,void> fn)
+		public unsafe void AddReverse(IEngineModule m, delegate* managed<IEngineModule, void> fn)
 		{
 			Modules[_rev] = m;
-			Enables[_rev] = en;
 			Methods[_rev] = fn;
 			_rev--;
 		}
@@ -78,24 +77,21 @@ public abstract class EngineKernel
 		[MethodImpl(MethodImplOptions.AggressiveInlining)]
 		public readonly unsafe void Execute()
 		{
-			for (int i = 0, n = Modules.Length; i < n; i++)
+			var modules = Modules;
+			var methods = Methods;
+			for (int i = 0, n = modules.Length; i < n; i++)
 			{
-				var m = Modules[i];
-				if (!IgnoreEnabled && !Enables[i](m)) continue;
-				Methods[i](m);
+				methods[i](modules[i]);
 			}
 		}
 	}
 
-	private DispatchTable _initTable;
-	private DispatchTable _startTable;
-	private DispatchTable _fixedTable;
-	private DispatchTable _updateTable;
-	private DispatchTable _lateTable;
-	private DispatchTable _shutTable;
-
-	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	protected void Load() => Loader.Load(this);
+	private DispatchTable _initTable = new(0);
+	private DispatchTable _startTable = new(0);
+	private DispatchTable _fixedTable = new(0);
+	private DispatchTable _updateTable = new(0);
+	private DispatchTable _lateTable = new(0);
+	private DispatchTable _shutTable = new(0);
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	protected void Initialize() => _initTable.Execute();
@@ -127,7 +123,7 @@ public abstract class EngineKernel
 
 		if (Affinity != Threads.Main)
 		{
-			Thread = new(Run)
+			Thread = new Thread(Run)
 			{
 				Name = Affinity.ToString(),
 				IsBackground = true,
@@ -139,44 +135,100 @@ public abstract class EngineKernel
 		Run();
 	}
 
-	internal unsafe void LoadModules(Type[] types)
+	protected void Load()
 	{
-		_initTable = new(types.Length);
-		_startTable = new(types.Length);
-		_fixedTable = new(types.Length);
-		_updateTable = new(types.Length);
-		_lateTable = new(types.Length);
-		_shutTable = new(types.Length, true);
+		var descriptors = Sort(DescriptorRegistry.GetAll<EngineModuleDescriptor>().Where(d => d.Affinity == Affinity).ToList());
 
-		foreach (var type in types)
+		_initTable = new DispatchTable(descriptors.Count(d => d.Mask.HasFlag(MethodMask.Init)));
+		_startTable = new DispatchTable(descriptors.Count(d => d.Mask.HasFlag(MethodMask.Start)));
+		_fixedTable = new DispatchTable(descriptors.Count(d => d.Mask.HasFlag(MethodMask.Fixed)));
+		_updateTable = new DispatchTable(descriptors.Count(d => d.Mask.HasFlag(MethodMask.Update)));
+		_lateTable = new DispatchTable(descriptors.Count(d => d.Mask.HasFlag(MethodMask.Late)));
+		_shutTable = new DispatchTable(descriptors.Count(d => d.Mask.HasFlag(MethodMask.Shutdown)));
+
+		foreach (var descriptor in descriptors)
 		{
-			var module = (IEngineModule)Activator.CreateInstance(type)!;
+			var module = (IEngineModule)Activator.CreateInstance(descriptor.Type)!;
 			module.Context = Context;
+			var table = descriptor.Table;
 
-			var desc = module.Descriptor;
-			var en = (delegate* managed<object, bool>)desc.EnabledPtr;
-			var tbl = desc.Table;
+			unsafe
+			{
+				if (table.TryGet(MethodMask.Load, out var method))
+					method(module);
 
-			if (tbl.TryGet(MethodMask.Load, out var method))
-				method(module);
+				if (table.TryGet(MethodMask.Init, out method))
+					_initTable.Add(module, method);
 
-			if (tbl.TryGet(MethodMask.Init, out method))
-				_initTable.Add(module, en, method);
+				if (table.TryGet(MethodMask.Start, out method))
+					_startTable.Add(module, method);
 
-			if (tbl.TryGet(MethodMask.Start, out method))
-				_startTable.Add(module, en, method);
+				if (table.TryGet(MethodMask.Fixed, out method))
+					_fixedTable.Add(module, method);
 
-			if (tbl.TryGet(MethodMask.Fixed, out method))
-				_fixedTable.Add(module, en, method);
+				if (table.TryGet(MethodMask.Update, out method))
+					_updateTable.Add(module, method);
 
-			if (tbl.TryGet(MethodMask.Update, out method))
-				_updateTable.Add(module, en, method);
+				if (table.TryGet(MethodMask.Late, out method))
+					_lateTable.Add(module, method);
 
-			if (tbl.TryGet(MethodMask.Late, out method))
-				_lateTable.Add(module, en, method);
+				if (table.TryGet(MethodMask.Shutdown, out method))
+					_shutTable.AddReverse(module, method);
+			}
+		}
 
-			if (tbl.TryGet(MethodMask.Shutdown, out method))
-				_shutTable.AddReverse(module, en, method);
+		return;
+
+		static List<EngineModuleDescriptor> Sort(List<EngineModuleDescriptor> list)
+		{
+			if (list.Count == 0) return [];
+
+			var byType = new Dictionary<Type, EngineModuleDescriptor>(list.Count);
+			var inSet = new HashSet<Type>(list.Count);
+
+			foreach (var d in list)
+			{
+				byType[d.Type] = d;
+				inSet.Add(d.Type);
+			}
+
+			var indeg = new Dictionary<Type, int>(list.Count);
+			var edges = new Dictionary<Type, List<Type>>(list.Count);
+			foreach (var d in list)
+			{
+				indeg[d.Type] = 0;
+				edges[d.Type] = [];
+			}
+
+			foreach (var d in list)
+			{
+				var deps = d.Dependencies;
+				if (deps is null) continue;
+				foreach (var dep in deps)
+				{
+					if (!inSet.Contains(dep)) continue;
+					edges[dep].Add(d.Type);
+					indeg[d.Type] += 1;
+				}
+			}
+
+			var q = new Queue<Type>(indeg.Where(kv => kv.Value == 0).Select(kv => kv.Key).OrderBy(t => t.FullName, StringComparer.Ordinal));
+
+			var ordered = new List<EngineModuleDescriptor>(list.Count);
+			while (q.Count > 0)
+			{
+				var u = q.Dequeue();
+				ordered.Add(byType[u]);
+
+				var outs = edges[u];
+				foreach (var v in outs)
+				{
+					if (--indeg[v] == 0)
+						q.Enqueue(v);
+				}
+			}
+
+			return ordered.Count != list.Count ? throw new InvalidOperationException("Cyclical module dependency detected.") : ordered;
 		}
 	}
 }
@@ -187,13 +239,15 @@ public sealed class MainKernel : EngineKernel
 	{
 		try
 		{
-			Thread = Thread.CurrentThread;
-
 			var barrier = require(Context.Registry.Get<PhaseBarrier>());
 			var channel = require(Context.Registry.Get<IMainChannels>());
 			var ct = Context.TokenSrc.Token;
 
 			Load();
+			barrier.MainLoadDone.Set();
+
+			barrier.RenderLoadDone.Wait(ct);
+
 			Initialize();
 			barrier.MainInitDone.Set();
 
@@ -214,7 +268,7 @@ public sealed class MainKernel : EngineKernel
 				last = now;
 				var dt = clamp(raw, 0f, MaxFrameDt);
 
-				channel.FrameWriter.Write(new(frameId, dt), ct);
+				channel.FrameWriter.Write(new FrameStart(frameId, dt), ct);
 				frameId++;
 			}
 
@@ -252,8 +306,11 @@ public sealed class GameKernel : EngineKernel
 			var channel = require(Context.Registry.Get<IGameChannels>());
 			var ct = Context.TokenSrc.Token;
 
-			barrier.MainInitDone.Wait(ct);
+			barrier.MainLoadDone.Wait(ct);
 			Load();
+			barrier.GameLoadDone.Set();
+
+			barrier.RenderLoadDone.Wait(ct);
 			Initialize();
 			barrier.GameInitDone.Set();
 
@@ -285,7 +342,7 @@ public sealed class GameKernel : EngineKernel
 				Update();
 				LateUpdate();
 
-				channel.SceneWriter.Publish(new(simFrame, clamp(accumulator / FixedDt, 0f, 1f)));
+				channel.SceneWriter.Publish(new SceneView(simFrame, clamp(accumulator / FixedDt, 0f, 1f)));
 			}
 
 			Code = ExitCode.Canceled;
@@ -322,8 +379,10 @@ public sealed class RenderKernel : EngineKernel
 			var channel = require(Context.Registry.Get<IRenderChannels>());
 			var ct = Context.TokenSrc.Token;
 
-			barrier.GameInitDone.Wait(ct);
+			barrier.GameLoadDone.Wait(ct);
 			Load();
+			barrier.RenderLoadDone.Set();
+
 			Initialize();
 			barrier.RenderInitDone.Set();
 

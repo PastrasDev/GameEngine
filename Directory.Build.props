@@ -8,13 +8,17 @@
         <Deterministic>true</Deterministic>
         <TieredCompilation>true</TieredCompilation>
         <TieredPGO>true</TieredPGO>
-        <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+        <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
         <EnableNETAnalyzers>true</EnableNETAnalyzers>
         <AnalysisLevel>latest</AnalysisLevel>
         <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
         <EnablePreviewFeatures>true</EnablePreviewFeatures>
         <CheckForOverflowUnderflow>false</CheckForOverflowUnderflow>
-        
+
+        <PublishAot>false</PublishAot>
+        <DisableRuntimeMarshalling>false</DisableRuntimeMarshalling>
+        <PublishTrimmed>false</PublishTrimmed>
+
         <_Root>$(MSBuildThisFileDirectory)</_Root>
         <_Src>$(_Root)src\</_Src>
         

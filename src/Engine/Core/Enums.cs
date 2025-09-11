@@ -60,3 +60,23 @@ public enum AccessType
 	ReadWrite,
 	ReadOnly
 }
+
+public enum KernelStage
+{
+	None = 0,
+
+	MainLoaded = 10,
+	GameLoaded = 20,
+	RenderLoaded = 30,
+	AllLoaded = 40,
+
+	MainInitialized = 50,
+	GameInitialized = 60,
+	RenderInitialized = 70,
+	AllInitialized = 80,
+
+	MainStarted = 90,
+	GameStarted = 100,
+	RenderStarted = 110,
+	AllStarted = 120,
+}

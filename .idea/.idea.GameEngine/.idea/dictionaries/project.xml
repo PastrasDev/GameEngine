@@ -3,6 +3,7 @@
     <words>
       <w>ptrs</w>
       <w>spsc</w>
+      <w>wndproc</w>
     </words>
   </dictionary>
 </component>

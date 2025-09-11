@@ -30,12 +30,12 @@ public sealed class Runtime(string[]? args)
 		{
 			var registry = root.Local;
 			registry.Add<IGameChannels>(itc.gameView);
-			registry.Add(CancellationTokenSource.CreateLinkedTokenSource(_cts.Token));
+			registry.Add(_cts);
 
 			_kernels[Threads.Game] = new GameKernel
 			{
 				Affinity = Threads.Game,
-				Context = new(registry),
+				Context = new EngineContext(registry),
 				Enabled = true
 			};
 		}
@@ -44,12 +44,12 @@ public sealed class Runtime(string[]? args)
 		{
 			var registry = root.Local;
 			registry.Add<IRenderChannels>(itc.renderView);
-			registry.Add(CancellationTokenSource.CreateLinkedTokenSource(_cts.Token));
+			registry.Add(_cts);
 
 			_kernels[Threads.Render] = new RenderKernel
 			{
 				Affinity = Threads.Render,
-				Context = new(registry),
+				Context = new EngineContext(registry),
 				Enabled = true
 			};
 		}
@@ -58,12 +58,12 @@ public sealed class Runtime(string[]? args)
 		{
 			var registry = root.Local;
 			registry.Add<IMainChannels>(itc.mainView);
-			registry.Add(CancellationTokenSource.CreateLinkedTokenSource(_cts.Token));
+			registry.Add(_cts);
 
 			_kernels[Threads.Main] = new MainKernel
 			{
 				Affinity = Threads.Main,
-				Context = new(registry),
+				Context = new EngineContext(registry),
 				Enabled = true
 			};
 		}
@@ -88,6 +88,9 @@ public sealed class Runtime(string[]? args)
 		}
 
 		_cts.Dispose();
+
+		Console.WriteLine("Runtime exited");
+
 		return final;
 	}
 
