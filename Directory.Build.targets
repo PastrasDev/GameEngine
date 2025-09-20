@@ -9,4 +9,5 @@
     <ItemGroup Condition="'$(RequireUsings)'=='true'">
         <Using Include="Engine.Core.Require" Static="True" />
     </ItemGroup>
+
 </Project>

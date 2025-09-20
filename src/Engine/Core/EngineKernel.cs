@@ -1,9 +1,11 @@
-﻿using System;
+﻿﻿using System;
 using System.Collections.Generic;
-using System.Diagnostics;
 using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Threading;
+using Engine.Messaging;
+using Engine.Platform.Windows;
+using Engine.Utilities;
 
 namespace Engine.Core;
 
@@ -24,26 +26,21 @@ public sealed class PhaseBarrier
 
 public abstract class EngineKernel
 {
-	protected const float FixedDt = 1f / 120f;
-	protected const float MaxFrameDt = 0.25f;
-	protected const int MaxFixedStepsPerFrame = 8;
+	private readonly int _initCount;
+	private readonly bool _launch;
+	private readonly EngineContext _context = null!;
+
+	protected virtual Threads Affinity => Threads.None;
 
 	public Thread Thread { get; protected set; } = null!;
 	public volatile ExitCode Code;
-
-	private readonly int _initCount;
-	private readonly bool _launch;
-	private readonly Threads _affinity;
-	private readonly EngineContext _context = null!;
-
-	public required Threads Affinity { get => _affinity; init { _affinity = value; _initCount++; TryLaunch(); } }
 	public required EngineContext Context { get => _context; init { _context = value; _initCount++; TryLaunch(); } }
 	public required bool Enabled { init { _launch = value; TryLaunch(); } }
 
 	internal struct DispatchTable
 	{
-		public IEngineModule[] Modules { get; init; }
-		public unsafe delegate* managed<IEngineModule, void>[] Methods { get; init; }
+		public EngineModule[] Modules { get; init; }
+		public unsafe delegate* managed<EngineModule, void>[] Methods { get; init; }
 
 		private int _count;
 		private int _rev;
@@ -51,15 +48,15 @@ public abstract class EngineKernel
 		[MethodImpl(MethodImplOptions.AggressiveInlining)]
 		public unsafe DispatchTable(int capacity)
 		{
-			Modules = capacity == 0 ? [] : new IEngineModule[capacity];
-			Methods = capacity == 0 ? [] : new delegate* managed<IEngineModule, void>[capacity];
+			Modules = capacity == 0 ? [] : new EngineModule[capacity];
+			Methods = capacity == 0 ? [] : new delegate* managed<EngineModule, void>[capacity];
 
 			_count = 0;
 			_rev = capacity - 1;
 		}
 
 		[MethodImpl(MethodImplOptions.AggressiveInlining)]
-		public unsafe void Add(IEngineModule m, delegate* managed<IEngineModule, void> fn)
+		public unsafe void Add(EngineModule m, delegate* managed<EngineModule, void> fn)
 		{
 			Modules[_count] = m;
 			Methods[_count] = fn;
@@ -67,7 +64,7 @@ public abstract class EngineKernel
 		}
 
 		[MethodImpl(MethodImplOptions.AggressiveInlining)]
-		public unsafe void AddReverse(IEngineModule m, delegate* managed<IEngineModule, void> fn)
+		public unsafe void AddReverse(EngineModule m, delegate* managed<EngineModule, void> fn)
 		{
 			Modules[_rev] = m;
 			Methods[_rev] = fn;
@@ -93,37 +90,33 @@ public abstract class EngineKernel
 	private DispatchTable _lateTable = new(0);
 	private DispatchTable _shutTable = new(0);
 
-	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	protected void Initialize() => _initTable.Execute();
+	[MethodImpl(MethodImplOptions.AggressiveInlining)] protected void Initialize() => _initTable.Execute();
+	[MethodImpl(MethodImplOptions.AggressiveInlining)] protected void Start() => _startTable.Execute();
+	[MethodImpl(MethodImplOptions.AggressiveInlining)] protected void FixedUpdate() { while (Context.Time.FixedUpdate()) _fixedTable.Execute(); }
+	[MethodImpl(MethodImplOptions.AggressiveInlining)] protected void Update() { Context.Time.Update(); _updateTable.Execute(); }
+	[MethodImpl(MethodImplOptions.AggressiveInlining)] protected void LateUpdate() => _lateTable.Execute();
+	[MethodImpl(MethodImplOptions.AggressiveInlining)] protected void Shutdown() => _shutTable.Execute();
 
-	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	protected void Start() => _startTable.Execute();
-
-	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	protected void FixedUpdate() => _fixedTable.Execute();
-
-	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	protected void Update() => _updateTable.Execute();
-
-	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	protected void LateUpdate() => _lateTable.Execute();
-
-	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	protected void Shutdown() => _shutTable.Execute();
-
-	protected abstract void Run();
+	protected abstract void BeforeLoad(PhaseBarrier barrier);
+	protected abstract void BeforeInit(PhaseBarrier barrier);
+	protected abstract void BeforeStart(PhaseBarrier barrier);
+	protected abstract void AfterLoad(PhaseBarrier barrier);
+	protected abstract void AfterInit(PhaseBarrier barrier);
+	protected abstract void AfterStart(PhaseBarrier barrier);
 
 	private void TryLaunch()
 	{
-		if (!_launch || _initCount < 2)
+		if (!_launch || _initCount < 1)
 			return;
 
 		if (Affinity == Threads.None)
 			throw new InvalidOperationException("Kernel affinity cannot be None.");
 
+		_context.Affinity = Affinity;
+
 		if (Affinity != Threads.Main)
 		{
-			Thread = new Thread(Run)
+			Thread = new Thread(Launch)
 			{
 				Name = Affinity.ToString(),
 				IsBackground = true,
@@ -132,24 +125,71 @@ public abstract class EngineKernel
 			return;
 		}
 
-		Run();
+		Launch();
 	}
 
-	protected void Load()
+	private void Launch()
 	{
-		var descriptors = Sort(DescriptorRegistry.GetAll<EngineModuleDescriptor>().Where(d => d.Affinity == Affinity).ToList());
-
-		_initTable = new DispatchTable(descriptors.Count(d => d.Mask.HasFlag(MethodMask.Init)));
-		_startTable = new DispatchTable(descriptors.Count(d => d.Mask.HasFlag(MethodMask.Start)));
-		_fixedTable = new DispatchTable(descriptors.Count(d => d.Mask.HasFlag(MethodMask.Fixed)));
-		_updateTable = new DispatchTable(descriptors.Count(d => d.Mask.HasFlag(MethodMask.Update)));
-		_lateTable = new DispatchTable(descriptors.Count(d => d.Mask.HasFlag(MethodMask.Late)));
-		_shutTable = new DispatchTable(descriptors.Count(d => d.Mask.HasFlag(MethodMask.Shutdown)));
-
-		foreach (var descriptor in descriptors)
+		try
 		{
-			var module = (IEngineModule)Activator.CreateInstance(descriptor.Type)!;
-			module.Context = Context;
+			var barrier = require(Context.Registry.Get<PhaseBarrier>());
+
+			BeforeLoad(barrier);
+			Load();
+			AfterLoad(barrier);
+
+			BeforeInit(barrier);
+			Initialize();
+			AfterInit(barrier);
+
+			BeforeStart(barrier);
+			Start();
+			AfterStart(barrier);
+
+			Code = Run();
+		}
+		catch (OperationCanceledException) { Code = ExitCode.Canceled; }
+		catch (Exception)                  { Code = ExitCode.Fatal; }
+		finally
+		{
+			try { Shutdown(); } catch { /* swallow */ }
+		}
+	}
+
+	protected abstract ExitCode Run();
+
+	private void Load()
+	{
+		var metadata = Sort(MetadataRegistry.GetAll<EngineModule.Metadata>().Where(d => (d.Affinity & Affinity) != 0).ToList());
+
+		int initN = 0;
+		int startN = 0;
+		int fixedN = 0;
+		int updateN = 0;
+		int lateN = 0;
+		int shutN = 0;
+
+		foreach (var descriptor in metadata)
+		{
+			var m = descriptor.Mask;
+			if ((m & MethodMask.Init) != 0) initN++;
+			if ((m & MethodMask.Start) != 0) startN++;
+			if ((m & MethodMask.Fixed) != 0) fixedN++;
+			if ((m & MethodMask.Update) != 0) updateN++;
+			if ((m & MethodMask.Late) != 0) lateN++;
+			if ((m & MethodMask.Shutdown) != 0) shutN++;
+		}
+
+		_initTable = new DispatchTable(initN);
+		_startTable = new DispatchTable(startN);
+		_fixedTable = new DispatchTable(fixedN);
+		_updateTable = new DispatchTable(updateN);
+		_lateTable = new DispatchTable(lateN);
+		_shutTable = new DispatchTable(shutN);
+
+		foreach (var descriptor in metadata)
+		{
+			var module = descriptor.Instantiate(Context);
 			var table = descriptor.Table;
 
 			unsafe
@@ -179,11 +219,11 @@ public abstract class EngineKernel
 
 		return;
 
-		static List<EngineModuleDescriptor> Sort(List<EngineModuleDescriptor> list)
+		static List<EngineModule.Metadata> Sort(List<EngineModule.Metadata> list)
 		{
 			if (list.Count == 0) return [];
 
-			var byType = new Dictionary<Type, EngineModuleDescriptor>(list.Count);
+			var byType = new Dictionary<Type, EngineModule.Metadata>(list.Count);
 			var inSet = new HashSet<Type>(list.Count);
 
 			foreach (var d in list)
@@ -214,7 +254,7 @@ public abstract class EngineKernel
 
 			var q = new Queue<Type>(indeg.Where(kv => kv.Value == 0).Select(kv => kv.Key).OrderBy(t => t.FullName, StringComparer.Ordinal));
 
-			var ordered = new List<EngineModuleDescriptor>(list.Count);
+			var ordered = new List<EngineModule.Metadata>(list.Count);
 			while (q.Count > 0)
 			{
 				var u = q.Dequeue();
@@ -235,189 +275,89 @@ public abstract class EngineKernel
 
 public sealed class MainKernel : EngineKernel
 {
-	protected override void Run()
+	protected override Threads Affinity => Threads.Main;
+
+	protected override void BeforeLoad(PhaseBarrier b) { /* no-op */ }
+	protected override void AfterLoad (PhaseBarrier b) { b.MainLoadDone.Set(); b.RenderLoadDone.Wait(); }
+	protected override void BeforeInit(PhaseBarrier b) { /* no-op */ }
+	protected override void AfterInit (PhaseBarrier b) => b.MainInitDone.Set();
+	protected override void BeforeStart(PhaseBarrier b) { /* no-op */ }
+	protected override void AfterStart(PhaseBarrier b) => b.MainStartDone.Set();
+
+	protected override ExitCode Run()
 	{
-		try
+		var ct = Context.TokenSrc.Token;
+		while (!ct.IsCancellationRequested)
 		{
-			var barrier = require(Context.Registry.Get<PhaseBarrier>());
-			var channel = require(Context.Registry.Get<IMainChannels>());
-			var ct = Context.TokenSrc.Token;
-
-			Load();
-			barrier.MainLoadDone.Set();
-
-			barrier.RenderLoadDone.Wait(ct);
-
-			Initialize();
-			barrier.MainInitDone.Set();
-
-			Start();
-			barrier.MainStartDone.Set();
-
-			var sw = Stopwatch.StartNew();
-			long frameId = 0;
-			double last = 0;
-
-			while (!ct.IsCancellationRequested)
-			{
-				Update();
-				LateUpdate();
-
-				var now = sw.Elapsed.TotalSeconds;
-				var raw = (float)(now - last);
-				last = now;
-				var dt = clamp(raw, 0f, MaxFrameDt);
-
-				channel.FrameWriter.Write(new FrameStart(frameId, dt), ct);
-				frameId++;
-			}
-
-			Code = ExitCode.Canceled;
+			Update();
+			LateUpdate();
 		}
-		catch (OperationCanceledException)
-		{
-			Code = ExitCode.Canceled;
-		}
-		catch (Exception)
-		{
-			Code = ExitCode.Fatal;
-		}
-		finally
-		{
-			try
-			{
-				Shutdown();
-			}
-			catch
-			{
-				/* ignore */
-			}
-		}
+
+		return ExitCode.Canceled;
 	}
 }
 
 public sealed class GameKernel : EngineKernel
 {
-	protected override void Run()
+	protected override Threads Affinity => Threads.Game;
+
+	protected override void BeforeLoad(PhaseBarrier b) => b.MainLoadDone.Wait();
+	protected override void AfterLoad (PhaseBarrier b) { b.GameLoadDone.Set(); b.RenderLoadDone.Wait(); }
+	protected override void BeforeInit(PhaseBarrier b) { /* no-op */ }
+	protected override void AfterInit (PhaseBarrier b) => b.GameInitDone.Set();
+	protected override void BeforeStart(PhaseBarrier b) => b.MainStartDone.Wait();
+	protected override void AfterStart(PhaseBarrier b) => b.GameStartDone.Set();
+
+	protected override ExitCode Run()
 	{
-		try
+		var registry = Context.Registry;
+		var input = require(Context.Input);
+		var channels = require(registry.Get<IGameChannels>());
+		var time = require(Context.Time);
+		var ct = Context.TokenSrc.Token;
+
+		InputSnapshot snapshot = default;
+
+		while (!ct.IsCancellationRequested)
 		{
-			var barrier = require(Context.Registry.Get<PhaseBarrier>());
-			var channel = require(Context.Registry.Get<IGameChannels>());
-			var ct = Context.TokenSrc.Token;
+			while (channels.InputReader.TryRead(out var s))
+				snapshot = s;
 
-			barrier.MainLoadDone.Wait(ct);
-			Load();
-			barrier.GameLoadDone.Set();
+			input?.Update(snapshot);
 
-			barrier.RenderLoadDone.Wait(ct);
-			Initialize();
-			barrier.GameInitDone.Set();
-
-			barrier.MainStartDone.Wait(ct);
-			Start();
-			barrier.GameStartDone.Set();
-
-			float accumulator = 0f;
-			int simFrame = 0;
-
-			while (!ct.IsCancellationRequested)
-			{
-				var start = channel.FrameReader.Read(ct);
-
-				var dt = clamp(start.Dt, 0f, MaxFrameDt);
-				accumulator += dt;
-
-				int steps = 0;
-				while (accumulator >= FixedDt && steps < MaxFixedStepsPerFrame)
-				{
-					Context.DeltaTime = FixedDt;
-					FixedUpdate();
-					accumulator -= FixedDt;
-					simFrame++;
-					steps++;
-				}
-
-				Context.DeltaTime = dt;
-				Update();
-				LateUpdate();
-
-				channel.SceneWriter.Publish(new SceneView(simFrame, clamp(accumulator / FixedDt, 0f, 1f)));
-			}
-
-			Code = ExitCode.Canceled;
+			FixedUpdate();
+			Update();
+			LateUpdate();
+			channels.SceneWriter.Publish(new SceneView((int)time.FixedFrameIndex, (float)time.FixedAlpha));
 		}
-		catch (OperationCanceledException)
-		{
-			Code = ExitCode.Canceled;
-		}
-		catch (Exception)
-		{
-			Code = ExitCode.Fatal;
-		}
-		finally
-		{
-			try
-			{
-				Shutdown();
-			}
-			catch
-			{
-				/* ignore */
-			}
-		}
+
+		return ExitCode.Canceled;
 	}
 }
 
 public sealed class RenderKernel : EngineKernel
 {
-	protected override void Run()
+	protected override Threads Affinity => Threads.Render;
+
+	protected override void BeforeLoad(PhaseBarrier b) => b.GameLoadDone.Wait();
+	protected override void AfterLoad (PhaseBarrier b) => b.RenderLoadDone.Set();
+	protected override void BeforeInit(PhaseBarrier b) => b.MainInitDone.Wait();
+	protected override void AfterInit (PhaseBarrier b) => b.RenderInitDone.Set();
+	protected override void BeforeStart(PhaseBarrier b) => b.GameStartDone.Wait();
+	protected override void AfterStart(PhaseBarrier b) => b.RenderStartDone.Set();
+
+	protected override ExitCode Run()
 	{
-		try
+		var channel = require(Context.Registry.Get<IRenderChannels>());
+		var ct = Context.TokenSrc.Token;
+
+		while (!ct.IsCancellationRequested)
 		{
-			var barrier = require(Context.Registry.Get<PhaseBarrier>());
-			var channel = require(Context.Registry.Get<IRenderChannels>());
-			var ct = Context.TokenSrc.Token;
-
-			barrier.GameLoadDone.Wait(ct);
-			Load();
-			barrier.RenderLoadDone.Set();
-
-			Initialize();
-			barrier.RenderInitDone.Set();
-
-			barrier.GameStartDone.Wait(ct);
-			Start();
-			barrier.RenderStartDone.Set();
-
-			while (!ct.IsCancellationRequested)
-			{
-				channel.SceneReader.Read();
-
-				Update();
-				LateUpdate();
-			}
-
-			Code = ExitCode.Canceled;
+			channel.SceneReader.Read();
+			Update();
+			LateUpdate();
 		}
-		catch (OperationCanceledException)
-		{
-			Code = ExitCode.Canceled;
-		}
-		catch (Exception)
-		{
-			Code = ExitCode.Fatal;
-		}
-		finally
-		{
-			try
-			{
-				Shutdown();
-			}
-			catch
-			{
-				/* ignore */
-			}
-		}
+
+		return ExitCode.Canceled;
 	}
 }

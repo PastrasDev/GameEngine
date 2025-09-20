@@ -2,21 +2,18 @@
 using System.Collections.Concurrent;
 using System.Runtime.CompilerServices;
 using System.Threading;
+using Engine.Core;
+using Engine.Platform.Windows;
 
-namespace Engine.Core;
+namespace Engine.Messaging;
 
 // ===============================
 // Messages & Commands
 // ===============================
 
-/// Frame boundary info from Main → Game
-public readonly record struct FrameStart(long FrameId, float Dt);
-
 /// Minimal per-frame view data from Game → Render (expand later)
 public readonly record struct SceneView(long FrameId, float Alpha);
 
-/// Input → Game
-public readonly record struct InputSnapshot(long FrameId /* add keys/mouse/gamepad fields */);
 
 /// Main → Render control (resize, vsync toggle, etc.)
 public readonly record struct RenderControl(RenderControlType Type, int Width = 0, int Height = 0);
@@ -28,9 +25,6 @@ public readonly record struct RenderControl(RenderControlType Type, int Width = 
 public interface IMainChannels
 {
 	/// main → game
-	IWritePort<FrameStart> FrameWriter { get; }
-
-	/// main → game
 	IWritePort<InputSnapshot> InputWriter { get; }
 
 	/// main → render
@@ -39,9 +33,6 @@ public interface IMainChannels
 
 public interface IGameChannels
 {
-	/// main → game
-	IReadPort<FrameStart> FrameReader { get; }
-
 	/// main → game
 	IReadPort<InputSnapshot> InputReader { get; }
 
@@ -111,15 +102,6 @@ public interface IRenderCommandBus : IControlBus<RenderControl>;
 
 public sealed class EngineChannels
 {
-	/// Main → Game (frame pacing)
-	public required FrameChannel Frame
-	{
-		[MethodImpl(MethodImplOptions.AggressiveInlining)]
-		get;
-		[MethodImpl(MethodImplOptions.AggressiveInlining)]
-		init;
-	}
-
 	/// Main → Game (input)
 	public required InputChannel Input
 	{
@@ -140,27 +122,6 @@ public sealed class EngineChannels
 
 	/// Main → Render (side-band commands)
 	public required IRenderCommandBus RenderCommands
-	{
-		[MethodImpl(MethodImplOptions.AggressiveInlining)]
-		get;
-		[MethodImpl(MethodImplOptions.AggressiveInlining)]
-		init;
-	}
-}
-
-public sealed class FrameChannel
-{
-	/// Game reads
-	public required IReadPort<FrameStart> Reader
-	{
-		[MethodImpl(MethodImplOptions.AggressiveInlining)]
-		get;
-		[MethodImpl(MethodImplOptions.AggressiveInlining)]
-		init;
-	}
-
-	/// Main writes
-	public required IWritePort<FrameStart> Writer
 	{
 		[MethodImpl(MethodImplOptions.AggressiveInlining)]
 		get;
@@ -240,12 +201,6 @@ public interface IPipe<T> : IDisposable
 
 public sealed class MainChannelsView(EngineChannels c) : IMainChannels
 {
-	public IWritePort<FrameStart> FrameWriter
-	{
-		[MethodImpl(MethodImplOptions.AggressiveInlining)]
-		get => c.Frame.Writer;
-	}
-
 	public IWritePort<InputSnapshot> InputWriter
 	{
 		[MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -261,12 +216,6 @@ public sealed class MainChannelsView(EngineChannels c) : IMainChannels
 
 public sealed class GameChannelsView(EngineChannels c) : IGameChannels
 {
-	public IReadPort<FrameStart> FrameReader
-	{
-		[MethodImpl(MethodImplOptions.AggressiveInlining)]
-		get => c.Frame.Reader;
-	}
-
 	public IReadPort<InputSnapshot> InputReader
 	{
 		[MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -296,41 +245,6 @@ public sealed class RenderChannelsView(EngineChannels c) : IRenderChannels
 }
 
 // ===============================
-// Defaults builder (public API)
-// ===============================
-
-public static class Channels
-{
-	public static (EngineChannels channels, MainChannelsView mainView, GameChannelsView gameView, RenderChannelsView renderView) CreateDefault(int frameCapacityPow2 = 256, int inputCapacityPow2 = 256, PipeFullMode pipeFullMode = PipeFullMode.Wait, WaitStrategy waitStrategy = WaitStrategy.Hybrid, int renderCtrlCapacity = 64)
-	{
-		// Main ↔ Game pipes
-		var frameRing = new SpscRing<FrameStart>(frameCapacityPow2, pipeFullMode, waitStrategy);
-		var framePort = new PipePort<FrameStart>(frameRing);
-
-		var inputRing = new SpscRing<InputSnapshot>(inputCapacityPow2, pipeFullMode, waitStrategy);
-		var inputPort = new PipePort<InputSnapshot>(inputRing);
-
-		// Game → Render snapshot
-		var viewSnap = new Snapshot<SceneView>();
-		var viewPort = new SnapshotPort<SceneView>(viewSnap);
-
-		// Main → Render control bus
-		var ctrlBus = new ControlQueue<RenderControl>(rc => (int)rc.Type, maxItems: renderCtrlCapacity);
-		var ctrlPort = new RenderCommandBusPort(ctrlBus);
-
-		var bundle = new EngineChannels
-		{
-			Frame = new FrameChannel { Reader = framePort, Writer = framePort },
-			Input = new InputChannel { Reader = inputPort, Writer = inputPort },
-			Scene = new SceneChannel { Reader = viewPort, Writer = viewPort },
-			RenderCommands = ctrlPort
-		};
-
-		return (bundle, new MainChannelsView(bundle), new GameChannelsView(bundle), new RenderChannelsView(bundle));
-	}
-}
-
-// ===============================
 // Low-level primitives (kept internal)
 // ===============================
 
@@ -352,22 +266,22 @@ public enum WaitStrategy
 	Hybrid
 }
 
-internal sealed class PipePort<T>(SpscRing<T> ring) : IReadPort<T>, IWritePort<T>
+public sealed class PipePort<T>(IPipe<T> pipe) : IReadPort<T>, IWritePort<T>
 {
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	public bool TryWrite(in T item) => ring.TryWrite(item);
+	public bool TryWrite(in T item) => pipe.TryWrite(item);
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	public void Write(in T item, CancellationToken ct) => ring.Write(item, ct);
+	public void Write(in T item, CancellationToken ct) => pipe.Write(item, ct);
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	public bool TryRead(out T item) => ring.TryRead(out item);
+	public bool TryRead(out T item) => pipe.TryRead(out item);
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	public T Read(CancellationToken ct) => ring.Read(ct);
+	public T Read(CancellationToken ct) => pipe.Read(ct);
 }
 
-internal sealed class SnapshotPort<T>(Snapshot<T> snap) : ISnapshotRead<T>, ISnapshotWrite<T>
+public sealed class SnapshotPort<T>(Snapshot<T> snap) : ISnapshotRead<T>, ISnapshotWrite<T>
 {
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	public void Publish(in T value) => snap.Publish(value);
@@ -383,7 +297,7 @@ internal sealed class SnapshotPort<T>(Snapshot<T> snap) : ISnapshotRead<T>, ISna
 /// High-performance SPSC ring buffer with power-of-two capacity.
 /// Safe for exactly one producer thread and one consumer thread.
 /// </summary>
-internal sealed class SpscRing<T> : IPipe<T>
+public sealed class SpscRing<T> : IPipe<T>
 {
 	private readonly T[] _buffer;
 	private readonly int _mask; // capacity - 1
@@ -504,7 +418,7 @@ internal sealed class SpscRing<T> : IPipe<T>
 /// Latest-wins snapshot. No queue. Producer publishes, consumer reads the freshest value.
 /// Use this for Game → Render views, HUD data, etc.
 /// </summary>
-internal sealed class Snapshot<T>
+public sealed class Snapshot<T>
 {
 	private T _a = default!;
 	private T _b = default!;
@@ -553,7 +467,7 @@ internal sealed class Snapshot<T>
 /// Multiple posts of the same key overwrite the previous one. Drain once per frame.
 /// Thread-safe for many producers, one consumer.
 /// </summary>
-internal sealed class ControlQueue<T>(Func<T, int> keySelector, int? maxItems = null)
+public sealed class ControlQueue<T>(Func<T, int> keySelector, int? maxItems = null)
 {
 	private readonly ConcurrentDictionary<int, T> _latest = new();
 	private readonly Func<T, int> _keyOf = keySelector ?? throw new ArgumentNullException(nameof(keySelector));
@@ -601,7 +515,7 @@ internal sealed class ControlQueue<T>(Func<T, int> keySelector, int? maxItems = 
 	public void Clear() => _latest.Clear();
 }
 
-internal class ControlBusPort<T>(ControlQueue<T> q) : IControlBus<T>
+public class ControlBusPort<T>(ControlQueue<T> q) : IControlBus<T>
 {
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	public void Post(in T message) => q.Post(message);
@@ -613,4 +527,4 @@ internal class ControlBusPort<T>(ControlQueue<T> q) : IControlBus<T>
 	public void Clear() => q.Clear();
 }
 
-internal sealed class RenderCommandBusPort(ControlQueue<RenderControl> q) : ControlBusPort<RenderControl>(q), IRenderCommandBus;
+public sealed class RenderCommandBusPort(ControlQueue<RenderControl> q) : ControlBusPort<RenderControl>(q), IRenderCommandBus;

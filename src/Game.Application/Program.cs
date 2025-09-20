@@ -1,10 +1,10 @@
 ﻿using System;
-using Engine.Runtime;
+using Engine;
 
 namespace Game.Application;
 
 internal static class Program
 {
     [STAThread]
-    internal static int Main(string[] args) => Runtime.Launch(args);
+    internal static int Main(string[] args) => IEngine.Start(args);
 }

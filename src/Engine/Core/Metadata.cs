@@ -10,12 +10,9 @@ using System.Threading;
 
 namespace Engine.Core;
 
-public interface IDescriptor<TSelf, TData> where TSelf : IDescriptor<TSelf, TData>
-{
-    static abstract TData Describe();
-}
+public interface IMetadata<TSelf, TData> where TSelf : IMetadata<TSelf, TData>;
 
-public static class DescriptorRegistry
+public static class MetadataRegistry
 {
     private static Dictionary<Type, IReadOnlyDictionary<Type, object>>? _byDataType;
 
@@ -29,10 +26,11 @@ public static class DescriptorRegistry
 
     public static IEnumerable<TData> GetAll<TData>() => GetByOwner<TData>().Values;
 
-    public static void Register<TSelf, TData>(TData data) where TSelf : IDescriptor<TSelf, TData>
+    public static TData Register<TSelf, TData>(TData data) where TSelf : IMetadata<TSelf, TData>
     {
         var dict = Mut.GetOrAdd(typeof(TData), _ => new ConcurrentDictionary<Type, object>());
         dict[typeof(TSelf)] = data!;
+        return data!;
     }
 
     #pragma warning disable CA2255
@@ -76,7 +74,7 @@ public static class DescriptorRegistry
         foreach (var i in t.GetInterfaces())
         {
             if (!i.IsGenericType) continue;
-            if (i.GetGenericTypeDefinition() == typeof(IDescriptor<,>))
+            if (i.GetGenericTypeDefinition() == typeof(IMetadata<,>))
                 return true;
         }
 

@@ -6,6 +6,6 @@
         <InvariantGlobalization>false</InvariantGlobalization>
     </PropertyGroup>
     <ItemGroup>
-        <ProjectReference Include="$(_Src)Engine.Runtime\Engine.Runtime.csproj" />
+      <ProjectReference Include="..\Engine\Engine.csproj" />
     </ItemGroup>
 </Project>

@@ -62,6 +62,7 @@ public static partial class Math
     [MethodImpl(MethodImplOptions.AggressiveInlining)] public static T ceil<T>(T value) where T : IFloatingPointIeee754<T> => T.Ceiling(value);
     [MethodImpl(MethodImplOptions.AggressiveInlining)] public static T round<T>(T value) where T : IFloatingPointIeee754<T> => T.Round(value);
     [MethodImpl(MethodImplOptions.AggressiveInlining)] public static T negate<T>(T value) where T : INumber<T> => -value;
+    [MethodImpl(MethodImplOptions.AggressiveInlining)] public static T exponent<T>(T value) where T : IFloatingPointIeee754<T> => T.CreateChecked(T.Exp(value));
     
     [MethodImpl(MethodImplOptions.AggressiveInlining)] public static T min<T>(T a, T b) where T : INumber<T> => T.Min(a, b);
     [MethodImpl(MethodImplOptions.AggressiveInlining)] public static T max<T>(T a, T b) where T : INumber<T> => T.Max(a, b);

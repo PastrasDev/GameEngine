@@ -1,41 +1,59 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Threading;
-using Engine.Core;
+using Engine.Messaging;
+using Engine.Platform.Windows;
 
-namespace Engine.Runtime;
+namespace Engine.Core;
 
-public sealed class Runtime(string[]? args)
+public sealed class Runtime
 {
 	private readonly CancellationTokenSource _cts = new();
 	private readonly Dictionary<Threads, EngineKernel> _kernels = new();
-	private readonly Threads _activeThreads = GetActiveThreads(args);
+	private Threads _activeThreads;
 
-	public static int Launch(string[]? args)
+	internal ExitCode Run(string[]? args)
 	{
-		var runtime = new Runtime(args);
-		return (int)runtime.Run();
-	}
+		_activeThreads = GetActiveThreads(args);
 
-	private ExitCode Run()
-	{
-		var itc = Channels.CreateDefault(256, 256, PipeFullMode.Wait, WaitStrategy.Hybrid, 64);
+		var inputRing = new SpscRing<InputSnapshot>(256, PipeFullMode.Wait, WaitStrategy.Hybrid);
+		var inputPort = new PipePort<InputSnapshot>(inputRing);
+
+		var viewSnap = new Snapshot<SceneView>();
+		var viewPort = new SnapshotPort<SceneView>(viewSnap);
+
+		var ctrlBus = new ControlQueue<RenderControl>(rc => (int)rc.Type, maxItems: 64);
+		var ctrlPort = new RenderCommandBusPort(ctrlBus);
+
+		var channels = new EngineChannels
+		{
+			Input = new InputChannel { Reader = inputPort, Writer = inputPort },
+			Scene = new SceneChannel { Reader = viewPort, Writer = viewPort },
+			RenderCommands = ctrlPort
+		};
+
+		var mainView = new MainChannelsView(channels);
+		var gameView = new GameChannelsView(channels);
+		var renderView = new RenderChannelsView(channels);
 
 		var root = Registry.Root;
 		root.Add(_cts);
-		root.Add(itc.channels);
+		root.Add(channels);
 		root.Add(new PhaseBarrier());
 
 		if (_activeThreads.HasFlag(Threads.Game))
 		{
 			var registry = root.Local;
-			registry.Add<IGameChannels>(itc.gameView);
+			registry.Add<IGameChannels>(gameView);
 			registry.Add(_cts);
 
 			_kernels[Threads.Game] = new GameKernel
 			{
-				Affinity = Threads.Game,
-				Context = new EngineContext(registry),
+				Context = new EngineContext
+				{
+					Registry = registry,
+					TokenSrc = _cts,
+				},
 				Enabled = true
 			};
 		}
@@ -43,13 +61,16 @@ public sealed class Runtime(string[]? args)
 		if (_activeThreads.HasFlag(Threads.Render))
 		{
 			var registry = root.Local;
-			registry.Add<IRenderChannels>(itc.renderView);
+			registry.Add<IRenderChannels>(renderView);
 			registry.Add(_cts);
 
 			_kernels[Threads.Render] = new RenderKernel
 			{
-				Affinity = Threads.Render,
-				Context = new EngineContext(registry),
+				Context = new EngineContext
+				{
+					Registry = registry,
+					TokenSrc = _cts,
+				},
 				Enabled = true
 			};
 		}
@@ -57,42 +78,35 @@ public sealed class Runtime(string[]? args)
 		if (_activeThreads.HasFlag(Threads.Main))
 		{
 			var registry = root.Local;
-			registry.Add<IMainChannels>(itc.mainView);
+			registry.Add<IMainChannels>(mainView);
 			registry.Add(_cts);
 
 			_kernels[Threads.Main] = new MainKernel
 			{
-				Affinity = Threads.Main,
-				Context = new EngineContext(registry),
+				Context = new EngineContext
+				{
+					Registry = registry,
+					TokenSrc = _cts,
+				},
 				Enabled = true
 			};
 		}
 
-		_cts.Cancel();
-
 		ExitCode final = default;
 		foreach (var kernel in _kernels.Values)
 		{
-			try
-			{
-				kernel.Thread?.Join();
-			}
-			catch
-			{
-				/* ignore */
-			}
-
-			kernel.Context.TokenSrc.Dispose();
+			try { kernel.Thread?.Join(); }
+			catch { /* ignore */ }
 			var code = kernel.Code;
 			if (code > final) final = code;
 		}
 
 		_cts.Dispose();
-
 		Console.WriteLine("Runtime exited");
-
 		return final;
 	}
+
+	internal void Shutdown() => _cts.Cancel();
 
 	private static Threads GetActiveThreads(string[]? args) => ParseArgs<GameRole>(args) switch
 	{

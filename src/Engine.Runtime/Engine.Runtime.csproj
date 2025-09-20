@@ -1,9 +1,0 @@
-﻿<Project Sdk="Microsoft.NET.Sdk" >
-    <PropertyGroup>
-        <MathUsings>true</MathUsings>
-        <RequireUsings>true</RequireUsings>
-    </PropertyGroup>
-    <ItemGroup>
-        <ProjectReference Include="$(_Src)Engine\Engine.csproj" />
-    </ItemGroup>
-</Project>

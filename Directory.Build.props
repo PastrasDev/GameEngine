@@ -36,4 +36,8 @@
         <Optimize>true</Optimize>
         <InvariantGlobalization>false</InvariantGlobalization> 
     </PropertyGroup>
+
+    <ItemGroup Condition="'$(MSBuildProjectName)' != 'Engine.Analyzers'">
+        <ProjectReference Include="$(MSBuildThisFileDirectory)src\Engine.Analyzers\Engine.Analyzers.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
+    </ItemGroup>
 </Project>

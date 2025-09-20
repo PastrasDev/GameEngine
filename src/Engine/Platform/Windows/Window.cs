@@ -1,137 +1,119 @@
-﻿using System;
+﻿using System.ComponentModel;
 using System.Drawing;
+using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using Windows.Win32;
 using Windows.Win32.Foundation;
+using Windows.Win32.Graphics.Dwm;
 using Windows.Win32.UI.WindowsAndMessaging;
-using Engine.Core;
 
 namespace Engine.Platform.Windows;
 
 using static PInvoke;
-using static Marshal;
-using static Utilities;
 
-[Affinity(Threads.Main)]
-public sealed class Window : EngineModule<Window>
+public static class Window
 {
-	private const string Title = "GameEngine";
-	private const string ClassName = "MyWindowClass";
-	private static nint _classNamePtr;
-	private readonly Color _titleBarColor = Color.Black;
-
-	private HWND _hwnd;
-	private HINSTANCE _hInstance;
-	private WNDPROC _wndProc = null!;
-
-	public override void Load()
+	public static unsafe void SetClientSize(HWND hwnd, int width, int height)
 	{
-		Console.WriteLine("Window loaded");
-		Enabled = true;
-	}
-
-	public override unsafe void Initialize()
-	{
-		_wndProc = WNDPROC;
-		_hInstance = GetModuleHandle(default(PCWSTR));
-
-		_classNamePtr = StringToHGlobalUni(ClassName);
-
-		var wc = new WNDCLASSEXW
+		RECT rect = new()
 		{
-			cbSize = (uint)sizeof(WNDCLASSEXW),
-			lpfnWndProc = _wndProc,
-			hInstance = _hInstance,
-			lpszClassName = new PCWSTR((char*)_classNamePtr),
+			left = 0,
+			top = 0,
+			right = width,
+			bottom = height
 		};
 
-		require(RegisterClassEx(wc) == 0, false);
-
-		Console.WriteLine("Window initialized");
-	}
-
-	public override unsafe void Start()
-	{
-		_hwnd = CreateWindowEx
-			(
-			 WINDOW_EX_STYLE.WS_EX_APPWINDOW | WINDOW_EX_STYLE.WS_EX_NOREDIRECTIONBITMAP,
-			 ClassName,
-			 Title,
-			 WINDOW_STYLE.WS_OVERLAPPEDWINDOW,
-			 CW_USEDEFAULT,
-			 CW_USEDEFAULT,
-			 800,
-			 600,
-			 default,
-			 default,
-			 _hInstance,
-			 null
-			);
-
-		require(_hwnd.IsNull, false);
-
-		SetTitleBarColor(_hwnd, _titleBarColor);
-		CenterWindow(_hwnd);
-		ShowWindow(_hwnd, SHOW_WINDOW_CMD.SW_SHOW);
-		SetForegroundWindow(_hwnd);
-
-		Console.WriteLine("Window started");
-	}
-
-	public override unsafe void Update()
-	{
-		MSG msg = default;
-		while (PeekMessage(&msg, default, 0, 0, PEEK_MESSAGE_REMOVE_TYPE.PM_REMOVE) != 0)
+		if (!AdjustWindowRect(&rect, (WINDOW_STYLE)GetWindowLong(hwnd, WINDOW_LONG_PTR_INDEX.GWL_STYLE), false))
 		{
-			if (msg.message == WM_QUIT)
-			{
-				Context.TokenSrc.Cancel();
-				return;
-			}
+			throw new Win32Exception(Marshal.GetLastWin32Error());
+		}
 
-			TranslateMessage(&msg);
-			DispatchMessage(&msg);
+		var windowWidth = rect.right - rect.left;
+		var windowHeight = rect.bottom - rect.top;
+
+		var screenWidth = GetSystemMetrics(SYSTEM_METRICS_INDEX.SM_CXSCREEN);
+		var screenHeight = GetSystemMetrics(SYSTEM_METRICS_INDEX.SM_CYSCREEN);
+
+		var x = (screenWidth - windowWidth) / 2;
+		var y = (screenHeight - windowHeight) / 2;
+
+		SetWindowPos(hwnd, HWND.Null, x, y, windowWidth, windowHeight, SET_WINDOW_POS_FLAGS.SWP_NOZORDER);
+	}
+
+	[MethodImpl(MethodImplOptions.AggressiveInlining)]
+	public static uint GetWindowsStyle(HWND hwnd) => (uint)GetWindowLong(hwnd, WINDOW_LONG_PTR_INDEX.GWL_STYLE);
+
+	[MethodImpl(MethodImplOptions.AggressiveInlining)]
+	public static unsafe void SetTitleBarColor(HWND hwnd, Color color)
+	{
+		var colorRef = (uint)(color.R | (color.G << 8) | (color.B << 16));
+		DwmSetWindowAttribute(hwnd, DWMWINDOWATTRIBUTE.DWMWA_CAPTION_COLOR, &colorRef, sizeof(uint));
+	}
+
+	[MethodImpl(MethodImplOptions.AggressiveInlining)]
+	public static unsafe void CenterWindow(HWND hwnd)
+	{
+		RECT rect;
+		if (!GetWindowRect(hwnd, &rect))
+		{
+			return;
+		}
+
+		var x = ((GetSystemMetrics(SYSTEM_METRICS_INDEX.SM_CXSCREEN) - (rect.right - rect.left))) / 2;
+		var y = ((GetSystemMetrics(SYSTEM_METRICS_INDEX.SM_CYSCREEN) - (rect.bottom - rect.top))) / 2;
+		SetWindowPos(hwnd, HWND.Null, x, y, 0, 0, SET_WINDOW_POS_FLAGS.SWP_NOSIZE | SET_WINDOW_POS_FLAGS.SWP_NOZORDER);
+	}
+
+	[MethodImpl(MethodImplOptions.AggressiveInlining)]
+	public static unsafe void LockCursorToWindow(HWND hwnd)
+	{
+		RECT rect;
+		if (!GetClientRect(hwnd, &rect)) return;
+		ClientToScreen(hwnd, (Point*)&rect.left);
+		ClientToScreen(hwnd, (Point*)&rect.right);
+		ClipCursor(&rect);
+	}
+
+	[MethodImpl(MethodImplOptions.AggressiveInlining)]
+	public static void UnlockCursor()
+	{
+		ClipCursor(default(RECT));
+	}
+
+	[MethodImpl(MethodImplOptions.AggressiveInlining)]
+	public static void ForceHideCursor()
+	{
+		while (ShowCursor(false) >= 0) { }
+	}
+
+	[MethodImpl(MethodImplOptions.AggressiveInlining)]
+	public static void ForceShowCursor()
+	{
+		while (ShowCursor(true) < 0) { }
+	}
+
+	[MethodImpl(MethodImplOptions.AggressiveInlining)]
+	public static unsafe void SetWindowTitle(HWND hwnd, string title)
+	{
+		fixed (char* p = title)
+		{
+			SetWindowText(hwnd, new PCWSTR(p));
 		}
 	}
 
-	public override void LateUpdate() { }
-
-	public override void Shutdown()
+	[MethodImpl(MethodImplOptions.AggressiveInlining)]
+	public static unsafe string GetWindowTitle(HWND hwnd)
 	{
-		if (!_hwnd.IsNull)
-		{
-			DestroyWindow(_hwnd);
-			_hwnd = default;
-		}
-
-		require(UnregisterClass(ClassName, _hInstance) == 0, false);
-
-		if (_classNamePtr != 0)
-		{
-			FreeHGlobal(_classNamePtr);
-			_classNamePtr = 0;
-		}
-
-		Console.WriteLine("Window shutdown");
+		const int capacity = 256;
+		var buffer = stackalloc char[capacity];
+		return new string(buffer, 0, GetWindowText(hwnd, new PWSTR(buffer), capacity));
 	}
 
-	private LRESULT WNDPROC(HWND hwnd, uint msg, WPARAM wParam, LPARAM lParam)
+	[MethodImpl(MethodImplOptions.AggressiveInlining)]
+	public static unsafe (int x, int y) GetCursorPosition()
 	{
-		switch (msg)
-		{
-			case WM_DESTROY:
-			{
-				PostQuitMessage(0);
-				return new LRESULT(0);
-			}
-			case WM_SIZE:
-			{
-				// Handle window resizing if needed
-				return new LRESULT(0);
-			}
-		}
-
-		return DefWindowProc(hwnd, msg, wParam, lParam);
+		Point p;
+		GetCursorPos(&p);
+		return (p.X, p.Y);
 	}
-
 }

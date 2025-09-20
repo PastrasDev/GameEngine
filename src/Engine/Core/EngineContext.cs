@@ -1,10 +1,17 @@
-﻿using System.Threading;
+﻿using System;
+using System.Threading;
+using Engine.Platform.Windows;
+using Engine.Utilities;
 
 namespace Engine.Core;
 
-public sealed class EngineContext(Registry registry)
+public sealed class EngineContext
 {
-    public float DeltaTime { get; set; }
-    public Registry Registry { get; init; } = registry;
-    public CancellationTokenSource TokenSrc { get; } = registry.Get<CancellationTokenSource>();
+    private readonly Input _input = new();
+
+    public Time Time { get; } = new();
+    public Input Input => Affinity != Threads.Game ? throw new InvalidOperationException("Input can only be accessed from the Game thread.") : _input;
+    public Threads Affinity { get; internal set; }
+    public required Registry Registry { get; init; }
+    public required CancellationTokenSource TokenSrc { get; init; }
 }
