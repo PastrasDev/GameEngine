@@ -4,13 +4,13 @@ using Engine.Core;
 using Engine.Core.Registries;
 using Engine.Core.Threading.Communication;
 using Engine.Debug;
+using Math = Engine.Mathematics.Math;
 
 namespace Engine;
 
 public sealed class Application
 {
 	private static Application _instance = null!;
-
 	internal static readonly CancellationTokenSource TokenSrc = new();
 	private readonly Dictionary<Affinity, Kernel> _kernels = new();
 	private Affinity _activeAffinity;
@@ -55,31 +55,6 @@ public sealed class Application
 	{
 		_registry.Global.Add(TokenSrc);
 		_registry.Global.Add(new MessageBus());
-		_registry.Global.Add(new PhaseBarrier());
-
-		if (_activeAffinity.HasFlag(Affinity.Game))
-		{
-			_kernels[Affinity.Game] = new GameKernel
-			{
-				Context = new Context
-				{
-					Registry = _registry,
-				}
-			};
-			_kernels[Affinity.Game].Launch();
-		}
-
-		if (_activeAffinity.HasFlag(Affinity.Render))
-		{
-			_kernels[Affinity.Render] = new RenderKernel
-			{
-				Context = new Context
-				{
-					Registry = _registry,
-				}
-			};
-			_kernels[Affinity.Render].Launch();
-		}
 
 		if (_activeAffinity.HasFlag(Affinity.Main))
 		{
@@ -90,23 +65,58 @@ public sealed class Application
 					Registry = _registry,
 				}
 			};
-			_kernels[Affinity.Main].Launch();
+			_kernels[Affinity.Main].Launch(Kernel.LaunchWait.Started);
+		}
+
+		if (_activeAffinity.HasFlag(Affinity.Game))
+		{
+			_kernels[Affinity.Game] = new GameKernel
+			{
+				Context = new Context
+				{
+					Registry = _registry,
+				},
+			};
+			_kernels[Affinity.Game].Launch(Kernel.LaunchWait.Started);
+		}
+
+		if (_activeAffinity.HasFlag(Affinity.Render))
+		{
+			_kernels[Affinity.Render] = new RenderKernel
+			{
+				Context = new Context
+				{
+					Registry = _registry,
+				},
+			};
+			_kernels[Affinity.Render].Launch(Kernel.LaunchWait.Started);
 		}
 
 		ExitCode final = default;
-		foreach (var kernel in _kernels.Values)
+
+
+		if (_kernels.TryGetValue(Affinity.Render, out var render))
 		{
-			try
-			{
-				kernel.Thread?.Join();
-			}
-			catch (Exception ex)
-			{
-				Log.Error($"Join failed: {ex}");
-			}
-			var code = kernel.Code;
-			Log.Info($"{kernel.GetType().Name} exited: {code}");
-			if (code > final) final = code;
+			try { render.Thread?.Join(); }
+			catch (Exception ex) { Log.Error($"Join failed: {ex}"); }
+			final = (ExitCode)max((int)final, (int)render.Code);
+			Log.Info($"{render.GetType().Name} exited: {render.Code}");
+		}
+
+		if (_kernels.TryGetValue(Affinity.Game, out var game))
+		{
+			try { game.Thread?.Join(); }
+			catch (Exception ex) { Log.Error($"Join failed: {ex}"); }
+			final = (ExitCode)max((int)final, (int)game.Code);
+			Log.Info($"{game.GetType().Name} exited: {game.Code}");
+		}
+
+		if (_kernels.TryGetValue(Affinity.Main, out var main))
+		{
+			try { main.Thread?.Join(); }
+			catch (Exception ex) { Log.Error($"Join failed: {ex}"); }
+			final = (ExitCode)max((int)final, (int)main.Code);
+			Log.Info($"{main.GetType().Name} exited: {main.Code}");
 		}
 
 		TokenSrc.Dispose();

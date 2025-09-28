@@ -4,7 +4,7 @@ using Engine.Platform.Windows;
 
 namespace Game;
 
-[Discoverable]
+[Discoverable(Enabled = false)]
 public class Test : Module<Test>, IConfigure
 {
 	public static void Configure()

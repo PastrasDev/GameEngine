@@ -70,6 +70,6 @@ public sealed class TestModule : Module<TestModule>, IConfigure
 
 	public override void Shutdown()
 	{
-
+		base.Shutdown();
 	}
 }
