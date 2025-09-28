@@ -11,8 +11,7 @@ public static partial class Math
     {
         public enum AngleUndefined { ReturnNaN, ReturnZero, ReturnNinety }
     }
-    
-    
+
     public static class Constants<T> where T : IFloatingPointIeee754<T>, IRootFunctions<T>
     { 
         private static readonly bool IsFloat = typeof(T) == typeof(float);
@@ -22,8 +21,8 @@ public static partial class Math
         public static readonly T KSqrAlmostZero = KAlmostZero * KAlmostZero;
         public static readonly T KRelativeEpsilon = IsFloat ? T.CreateChecked(1e-5f) : T.CreateChecked(1e-12d);
         public static readonly T KSqrRelativeEpsilon = KRelativeEpsilon * KRelativeEpsilon;
-        public static readonly T PI = IsFloat ? T.CreateChecked(System.MathF.PI) : T.CreateChecked(System.Math.PI);
-        public static readonly T Tau = IsFloat ? T.CreateChecked(System.MathF.Tau) : T.CreateChecked(System.Math.Tau);
+        public static readonly T PI = IsFloat ? T.CreateChecked(MathF.PI) : T.CreateChecked(System.Math.PI);
+        public static readonly T Tau = IsFloat ? T.CreateChecked(MathF.Tau) : T.CreateChecked(System.Math.Tau);
         public static readonly T PI_Half = PI * T.CreateChecked(0.5);
         public static readonly T PI_Quarter = PI * T.CreateChecked(0.25);
         public static readonly T PI_SQR = PI * PI;

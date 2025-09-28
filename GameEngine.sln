@@ -2,7 +2,7 @@
 Microsoft Visual Studio Solution File, Format Version 12.00
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "src", "src", "{80E72681-E0E1-4494-96E5-B0B6952FEB0B}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Game.Application", "src\Game.Application\Game.Application.csproj", "{FA902445-63FD-42AF-BD8C-D1EC1507811F}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Game", "src\Game\Game.csproj", "{FA902445-63FD-42AF-BD8C-D1EC1507811F}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Engine.Interop", "src\Engine.Interop\Engine.Interop.csproj", "{3D7F2CA6-4565-4FFB-8B5E-5ECFD54341D2}"
 EndProject

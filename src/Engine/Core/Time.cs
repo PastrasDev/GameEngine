@@ -1,8 +1,7 @@
-﻿using System;
-using System.Diagnostics;
+﻿using System.Diagnostics;
 using System.Runtime.CompilerServices;
 
-namespace Engine.Utilities;
+namespace Engine.Core;
 
 public sealed partial class Time
 {
@@ -25,7 +24,7 @@ public sealed partial class Time
 	public double Elapsed { get; private set; }
 
 	/// Amount of frames in one second
-	public double FramesPerSecond { get; private set; }
+	public double Fps { get; private set; }
 
 	/// Average frame time in milliseconds
 	public double AverageFrameTime { get; private set; }
@@ -42,10 +41,13 @@ public sealed partial class Time
 		Elapsed += UnscaledDelta;
 		FrameIndex++;
 
-		double alpha = 0.1 - exponent(-UnscaledDelta * 8.0);
+		if (!(UnscaledDelta > double.Epsilon)) return;
+
+		double alpha = saturate(1.0 - exponent(-UnscaledDelta * 8.0));
 		var frameTimeMs = UnscaledDelta * 1000.0;
+
 		AverageFrameTime = AverageFrameTime == 0 ? frameTimeMs : (1 - alpha) * AverageFrameTime + alpha * frameTimeMs;
-		FramesPerSecond = FramesPerSecond == 0 ? 1.0 / UnscaledDelta : (1 - alpha) * FramesPerSecond + alpha * (1.0 / UnscaledDelta);
+		Fps = Fps == 0 ? 1.0 / UnscaledDelta : (1 - alpha) * Fps + alpha * (1.0 / UnscaledDelta);
 	}
 }
 
