@@ -45,8 +45,8 @@ namespace Engine.Core
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
             public bool Add(Type key, object service)
             {
-	            require(key);
-	            require(service);
+	            Require(key);
+	            Require(service);
 	            if (service is not TItem)
 		            throw new ArgumentException($"Service must be {typeof(TItem).FullName}");
 	            var (_, seg) = TargetSegment();
@@ -56,8 +56,8 @@ namespace Engine.Core
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
             public bool Replace(Type key, object service)
             {
-	            require(key);
-	            require(service);
+	            Require(key);
+	            Require(service);
 	            if (service is not TItem)
 		            throw new ArgumentException($"Service must be {typeof(TItem).FullName}");
 	            var (_, seg) = TargetSegment();
@@ -67,7 +67,7 @@ namespace Engine.Core
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
             public bool Remove(Type key)
             {
-	            require(key);
+	            Require(key);
 	            var (_, seg) = TargetSegment();
 	            return seg.Remove(key);
             }
@@ -75,7 +75,7 @@ namespace Engine.Core
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
             public object Get(Type key, [CallerArgumentExpression("key")] string? expr = null, [CallerFilePath] string file = "", [CallerLineNumber] int line = 0, [CallerMemberName] string member = "")
             {
-	            require(key);
+	            Require(key);
 	            var (isGlobal, seg) = TargetSegment();
 	            if (seg.TryGet(key, out var obj)) return obj!;
 	            throw new KeyNotFoundException("" + (isGlobal ? $"Global service not found: '{expr}' ({key.FullName})" : $"Scoped service not found on thread {Environment.CurrentManagedThreadId}: '{expr}' ({key.FullName})") + $" at {member} in {file}:line {line}");
@@ -135,8 +135,8 @@ namespace Engine.Core
                 [MethodImpl(MethodImplOptions.AggressiveInlining)]
                 public bool Add(Type key, object value)
                 {
-                    require(key);
-                    require(value);
+                    Require(key);
+                    Require(value);
                     lock (_writeLock)
                     {
                         var cur = Volatile.Read(ref _map);
@@ -150,8 +150,8 @@ namespace Engine.Core
                 [MethodImpl(MethodImplOptions.AggressiveInlining)]
                 public bool Replace(Type key, object value)
                 {
-	                require(key);
-	                require(value);
+	                Require(key);
+	                Require(value);
                     lock (_writeLock)
                     {
                         var cur = Volatile.Read(ref _map);
@@ -165,7 +165,7 @@ namespace Engine.Core
                 [MethodImpl(MethodImplOptions.AggressiveInlining)]
                 public bool Remove(Type key)
                 {
-	                require(key);
+	                Require(key);
                     lock (_writeLock)
                     {
                         var cur = Volatile.Read(ref _map);

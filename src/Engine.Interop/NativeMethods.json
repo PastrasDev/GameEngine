@@ -5,8 +5,8 @@
   "wideCharOnly": true,
   "emitSingleFile": false,
   "useSafeHandles": false,
-  "allowMarshaling": true,
+  "allowMarshaling": false,
   "multiTargetingFriendlyAPIs": true,
-  "friendlyOverloads": {"enabled": true},
+  "friendlyOverloads": {"enabled": false},
   "comInterop": {"preserveSigMethods": ["*"], "useIntPtrForComOutPointers": true}
 }

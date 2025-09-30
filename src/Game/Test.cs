@@ -12,8 +12,6 @@ public class Test : Module<Test>, IConfigure
 		Enabled = true;
 		AllowMultiple = false;
 		Affinity = Affinity.Game;
-
-		AddDependency<Window>();
 	}
 
 	public override void Load()

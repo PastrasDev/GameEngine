@@ -105,14 +105,14 @@ namespace Engine.Core
 			[MethodImpl(MethodImplOptions.AggressiveInlining)]
 			public void Add(Thunk thunk)
 			{
-				require(thunk.IsNull, false);
+				Require(thunk.IsNull, false);
 				Values[Count++] = thunk;
 			}
 
 			[MethodImpl(MethodImplOptions.AggressiveInlining)]
 			public void SetAt(int slot, Thunk thunk)
 			{
-				require(thunk.IsNull, false);
+				Require(thunk.IsNull, false);
 				Values[slot] = thunk;
 				if (slot >= Count) Count = slot + 1;
 			}

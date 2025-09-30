@@ -2,7 +2,7 @@
 using System.Runtime.CompilerServices;
 using Engine.Core;
 using Engine.Core.Registries;
-using Engine.Core.Threading.Communication;
+using Engine.Core.Threading.Messaging;
 using Engine.Debug;
 using Math = Engine.Mathematics.Math;
 
@@ -15,6 +15,11 @@ public sealed class Application
 	private readonly Dictionary<Affinity, Kernel> _kernels = new();
 	private Affinity _activeAffinity;
 	private readonly Registry _registry = new();
+
+	//private static readonly ManualResetEventSlim s_startGate = new(initialState: false);
+	//internal static void WaitForGlobalStartGate() => s_startGate.Wait(TokenSrc.Token);
+	//private static void ResetGlobalStartGate() => s_startGate.Reset();
+	//private static void ReleaseGlobalStartGate() => s_startGate.Set();
 
 	static Application() => DiscoverableAttribute.ForceAll(true);
 
@@ -54,7 +59,9 @@ public sealed class Application
 	private ExitCode Run()
 	{
 		_registry.Global.Add(TokenSrc);
-		_registry.Global.Add(new MessageBus());
+		//_registry.Global.Add(new MessageBus());
+
+		//ResetGlobalStartGate();
 
 		if (_activeAffinity.HasFlag(Affinity.Main))
 		{
@@ -65,7 +72,7 @@ public sealed class Application
 					Registry = _registry,
 				}
 			};
-			_kernels[Affinity.Main].Launch(Kernel.LaunchWait.Started);
+			_kernels[Affinity.Main].Launch(Kernel.LaunchWait.Initialized);
 		}
 
 		if (_activeAffinity.HasFlag(Affinity.Game))
@@ -77,7 +84,7 @@ public sealed class Application
 					Registry = _registry,
 				},
 			};
-			_kernels[Affinity.Game].Launch(Kernel.LaunchWait.Started);
+			_kernels[Affinity.Game].Launch(Kernel.LaunchWait.Initialized);
 		}
 
 		if (_activeAffinity.HasFlag(Affinity.Render))
@@ -89,11 +96,18 @@ public sealed class Application
 					Registry = _registry,
 				},
 			};
-			_kernels[Affinity.Render].Launch(Kernel.LaunchWait.Started);
+			_kernels[Affinity.Render].Launch(Kernel.LaunchWait.Initialized);
 		}
 
-		ExitCode final = default;
+		//foreach (var k in _kernels.Values)
+			//k.WaitInitialized(TokenSrc.Token);
 
+		//ReleaseGlobalStartGate();
+
+		//foreach (var k in _kernels.Values)
+			//k.WaitStarted(TokenSrc.Token);
+
+		ExitCode final = default;
 
 		if (_kernels.TryGetValue(Affinity.Render, out var render))
 		{
@@ -120,7 +134,6 @@ public sealed class Application
 		}
 
 		TokenSrc.Dispose();
-		Log.Info("Runtime exited");
 		return final;
 	}
 

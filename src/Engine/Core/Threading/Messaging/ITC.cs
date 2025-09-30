@@ -1,9 +1,26 @@
 ﻿using System.Collections.Concurrent;
 using System.Runtime.CompilerServices;
-using Engine.Core.Threading.Communication.Messages;
+//using Engine.Core.Threading.Messaging.Messages;
 
-namespace Engine.Core.Threading.Communication
+namespace Engine.Core.Threading.Messaging
 {
+	/*public enum ChannelType
+	{
+		None,
+		Pipe,
+		Snapshot,
+		Control
+	}
+
+	public enum PipeFullMode
+	{
+		/// Producer waits until space exists (Write spins/yields).
+		Wait,
+
+		/// Producer fails fast when full (TryWrite false; Write spins/yields until space).
+		DropWrite
+	}
+
 	namespace Messages
 	{
 		public readonly record struct InputSnapshot : IThreadMessage<InputSnapshot>
@@ -45,23 +62,6 @@ namespace Engine.Core.Threading.Communication
 				ToggleFullscreen
 			}
 		}
-	}
-
-	public enum ChannelType
-	{
-		None,
-		Pipe,
-		Snapshot,
-		Control
-	}
-
-	public enum PipeFullMode
-	{
-		/// Producer waits until space exists (Write spins/yields).
-		Wait,
-
-		/// Producer fails fast when full (TryWrite false; Write spins/yields until space).
-		DropWrite
 	}
 
 	public enum WaitStrategy
@@ -467,5 +467,5 @@ namespace Engine.Core.Threading.Communication
 
 		[MethodImpl(MethodImplOptions.AggressiveInlining)]
 		public void Clear() => _latest.Clear();
-	}
+	}*/
 }

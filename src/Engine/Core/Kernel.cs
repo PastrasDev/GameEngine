@@ -1,10 +1,9 @@
-﻿using System.Net.Sockets;
-using System.Numerics;
+﻿using System.Numerics;
+using Engine.Core.Extensions;
 using Engine.Core.Lifecycle;
-using Engine.Core.Threading.Communication;
-using Engine.Core.Threading.Communication.Messages;
+using Engine.Core.Threading.Messaging;
+//using Engine.Core.Threading.Messaging.Messages;
 using Engine.Debug;
-using Engine.Platform.Windows;
 
 namespace Engine.Core;
 
@@ -18,6 +17,9 @@ public abstract class Kernel
 	public volatile Application.ExitCode Code;
 
 	public enum LaunchWait { None, Initialized, Started }
+
+	//public void WaitInitialized(CancellationToken ct) => InitializedEvt.Wait(ct);
+	//public void WaitStarted(CancellationToken ct)     => StartedEvt.Wait(ct);
 
 	public abstract void Launch(LaunchWait waitFor = LaunchWait.None);
 	protected abstract void Run();
@@ -38,8 +40,8 @@ public abstract class Kernel<TSelf> : Kernel, IPhases where TSelf : Kernel<TSelf
 	protected static Module.Metadata[] SortedModules { get; }
 	protected readonly Thunks[] Phases = new Thunks[IPhases.Length];
 
-	private readonly ManualResetEventSlim _initializedEvt = new(false);
-	private readonly ManualResetEventSlim _startedEvt = new(false);
+	protected readonly ManualResetEventSlim InitializedEvt = new(false);
+	protected readonly ManualResetEventSlim StartedEvt = new(false);
 
 	static Kernel()
 	{
@@ -121,15 +123,21 @@ public abstract class Kernel<TSelf> : Kernel, IPhases where TSelf : Kernel<TSelf
 
 		switch (waitFor)
 		{
-			case LaunchWait.Initialized: _initializedEvt.Wait(Application.TokenSrc.Token); break;
-			case LaunchWait.Started: _startedEvt.Wait(Application.TokenSrc.Token); break;
+			case LaunchWait.Initialized: InitializedEvt.Wait(Application.TokenSrc.Token); break;
+			case LaunchWait.Started: StartedEvt.Wait(Application.TokenSrc.Token); break;
 			case LaunchWait.None: break;
 		}
 	}
 
 	public sealed override void Load() { FillPhases(); Phases[0].Invoke(); }
-	public sealed override void Initialize() { Phases[1].Invoke(); _initializedEvt.Set(); }
-	public sealed override void Start() { Phases[2].Invoke(); _startedEvt.Set(); }
+
+	public sealed override void Initialize()
+	{
+		Phases[1].Invoke();
+		InitializedEvt.Set();
+		//Application.WaitForGlobalStartGate();
+	}
+	public sealed override void Start() { Phases[2].Invoke(); StartedEvt.Set(); }
 	public sealed override void FixedUpdate() { while (Context.Time.FixedUpdate()) Phases[3].Invoke(); }
 	public sealed override void PreUpdate() => Phases[4].Invoke();
 	public sealed override void Update() => Phases[5].Invoke();
@@ -163,11 +171,8 @@ public sealed class MainKernel : Kernel<MainKernel>, IConfigure
 
 public sealed class GameKernel : Kernel<GameKernel>, IConfigure
 {
-	private Input Input { get; set; } = null!;
 	private Time Time { get; set; } = null!;
-
-	private IReadPort<InputSnapshot> InputReader { get; set; } = null!;
-	private ISnapshotWrite<SceneView> SceneWriter { get; set; } = null!;
+	//private ISnapshotWrite<SceneView> SceneWriter { get; set; } = null!;
 
 	public static void Configure()
 	{
@@ -176,14 +181,8 @@ public sealed class GameKernel : Kernel<GameKernel>, IConfigure
 
 	protected override void Run()
 	{
-		Input = Context.Input;
 		Time = Context.Time;
-
-		InputReader = Context.MessageBus.Claim<InputSnapshot>().Read!;
-		SceneWriter = Context.MessageBus.Claim<SceneView>().SnapshotWrite!;
-
-		InputSnapshot snapshot = default;
-		long lastProcessedInputFrame = -1;
+		//SceneWriter = Context.MessageBus.Claim<SceneView>().SnapshotWrite!;
 
 		Load();
 		Initialize();
@@ -191,27 +190,18 @@ public sealed class GameKernel : Kernel<GameKernel>, IConfigure
 
 		while (Application.IsRunning())
 		{
-			while (InputReader!.TryRead(out var s))
-				snapshot = s;
-
-			if (snapshot.FrameId != lastProcessedInputFrame)
-			{
-				Input.Update(in snapshot);
-				lastProcessedInputFrame = snapshot.FrameId;
-			}
-
-			FixedUpdate();
 			PreUpdate();
 			Update();
 			PostUpdate();
+			FixedUpdate();
 
-			var sceneView = new SceneView
-			{
-				FrameIndex = (int)Time.FixedFrameIndex,
-				Alpha = (float)Time.FixedAlpha
-			};
-
-			SceneWriter!.Publish(sceneView);
+			// var sceneView = new SceneView
+			// {
+			// 	FrameIndex = (int)Time.FixedFrameIndex,
+			// 	Alpha = (float)Time.FixedAlpha
+			// };
+			//
+			// SceneWriter!.Publish(sceneView);
 		}
 
 		Shutdown();
@@ -220,7 +210,7 @@ public sealed class GameKernel : Kernel<GameKernel>, IConfigure
 
 public sealed class RenderKernel : Kernel<RenderKernel>, IConfigure
 {
-	private ISnapshotRead<SceneView> SceneReader { get; set; } = null!;
+	//private ISnapshotRead<SceneView> SceneReader { get; set; } = null!;
 
 	public static void Configure()
 	{
@@ -229,7 +219,7 @@ public sealed class RenderKernel : Kernel<RenderKernel>, IConfigure
 
 	protected override void Run()
 	{
-		SceneReader = Context.MessageBus.Claim<SceneView>().SnapshotRead!;
+		//SceneReader = Context.MessageBus.Claim<SceneView>().SnapshotRead!;
 
 		Load();
 		Initialize();
@@ -237,7 +227,7 @@ public sealed class RenderKernel : Kernel<RenderKernel>, IConfigure
 
 		while (Application.IsRunning())
 		{
-			var (view, version) = SceneReader!.Read();
+			//var (view, version) = SceneReader!.Read();
 
 			PreUpdate();
 			Update();

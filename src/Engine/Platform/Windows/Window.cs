@@ -1,41 +1,43 @@
-﻿using System.ComponentModel;
-using System.Drawing;
-using System.Runtime.CompilerServices;
+﻿using System.Drawing;
 using System.Runtime.InteropServices;
-using Windows.Win32;
 using Windows.Win32.Foundation;
-using Windows.Win32.Graphics.Dwm;
 using Windows.Win32.UI.Input;
 using Windows.Win32.UI.WindowsAndMessaging;
 using Engine.Core;
 using Engine.Core.Lifecycle;
-using Engine.Core.Threading.Communication;
-using Engine.Core.Threading.Communication.Messages;
+using Engine.Core.Threading.Messaging;
+using Engine.Core.Threading.Messaging;
+using Engine.Core.Threading.Messaging.Messages;
+using Engine.Core.Threading.Messaging.Policies;
+//using Engine.Core.Threading.Messaging.Messages;
+using static Windows.Win32.PInvoke;
+using static System.Runtime.InteropServices.Marshal;
 
 namespace Engine.Platform.Windows;
 
-using static PInvoke;
-using static Marshal;
+[UnmanagedFunctionPointer(CallingConvention.Winapi)]
+internal delegate LRESULT WNDPROC(HWND hwnd, uint msg, WPARAM wParam, LPARAM lParam);
 
 [Discoverable]
-public sealed class Window : Module<Window>, IConfigure
+public sealed partial class Window : Module<Window>, IConfigure
 {
 	private const string Title = "GameEngine";
 	private const string ClassName = "MyWindowClass";
-	private static nint _classNamePtr;
-	private readonly Color _titleBarColor = Color.Black;
+	private nint _pClassName;
 
-	internal HWND Hwnd { get; private set; }
-	private HINSTANCE _hInstance;
+	public HWND Hwnd { get; private set; }
+	public HINSTANCE HInstance { get; private set; }
 	private WNDPROC _wndProc = null!;
-
 	private RawInput _rawInput = null!;
+
+	private readonly Color _titleBarColor = Color.Black;
 
 	public static void Configure()
 	{
 		Enabled = true;
 		AllowMultiple = false;
 		Affinity = Affinity.Main;
+
 		AddComponent<RawInput>();
 	}
 
@@ -51,44 +53,51 @@ public sealed class Window : Module<Window>, IConfigure
 		_rawInput = GetComponent<RawInput>();
 
 		_wndProc = WNDPROC;
-		_hInstance = GetModuleHandle(default(PCWSTR));
-		_classNamePtr = StringToHGlobalUni(ClassName);
+		HInstance = GetModuleHandle(default);
+		_pClassName = StringToHGlobalUni(ClassName);
 
 		var wc = new WNDCLASSEXW
 		{
 			#pragma warning disable CS8500
 			cbSize = (uint)sizeof(WNDCLASSEXW),
 			#pragma warning restore CS8500
-			lpfnWndProc = _wndProc,
-			hInstance = _hInstance,
-			lpszClassName = new PCWSTR((char*)_classNamePtr),
+			lpfnWndProc = (delegate* unmanaged[Stdcall]<HWND, uint, WPARAM, LPARAM, LRESULT>)GetFunctionPointerForDelegate(_wndProc),
+			hInstance = HInstance,
+			lpszClassName = new PCWSTR((char*)_pClassName),
 		};
 
-		require(RegisterClassEx(wc) == 0, false);
+		Require(RegisterClassEx(&wc) == 0, false);
 	}
 
 	public override unsafe void Start()
 	{
 		base.Start();
 
-		Hwnd = CreateWindowEx
-			(
-			 WINDOW_EX_STYLE.WS_EX_APPWINDOW | WINDOW_EX_STYLE.WS_EX_NOREDIRECTIONBITMAP,
-			 ClassName,
-			 Title,
-			 WINDOW_STYLE.WS_OVERLAPPEDWINDOW,
-			 CW_USEDEFAULT,
-			 CW_USEDEFAULT,
-			 800,
-			 600,
-			 default,
-			 default,
-			 _hInstance,
-			 null
-			);
+		fixed (char* pTitle = Title)
+		{
+			Hwnd = CreateWindowEx
+				(WINDOW_EX_STYLE.WS_EX_APPWINDOW | WINDOW_EX_STYLE.WS_EX_NOREDIRECTIONBITMAP,
+				 new PCWSTR((char*)_pClassName),
+				 new PCWSTR(pTitle),
+				 WINDOW_STYLE.WS_OVERLAPPEDWINDOW,
+				 CW_USEDEFAULT,
+				 CW_USEDEFAULT,
+				 1280,
+				 720,
+				 default,
+				 default,
+				 HInstance,
+				 null);
+		}
 
-		require(Hwnd.IsNull, false);
+		// Send(new Snapshot<HWND, Renderer>
+		// {
+		// 	Data = Hwnd,
+		// 	Target = Registry.Instance.Global.Get<Renderer>(),
+		// 	Settings = default
+		// });
 
+		Require(Hwnd.IsNull, false);
 		SetTitleBarColor(Hwnd, _titleBarColor);
 		CenterWindow(Hwnd);
 		ShowWindow(Hwnd, SHOW_WINDOW_CMD.SW_SHOW);
@@ -113,7 +122,7 @@ public sealed class Window : Module<Window>, IConfigure
 
 	public override void PostUpdate() { }
 
-	public override void Shutdown()
+	public override unsafe void Shutdown()
 	{
 		base.Shutdown();
 
@@ -123,12 +132,12 @@ public sealed class Window : Module<Window>, IConfigure
 			Hwnd = default;
 		}
 
-		require(UnregisterClass(ClassName, _hInstance) == 0, false);
+		Require(UnregisterClass(new PCWSTR((char*)_pClassName), HInstance) == 0, false);
 
-		if (_classNamePtr != 0)
+		if (_pClassName != 0)
 		{
-			FreeHGlobal(_classNamePtr);
-			_classNamePtr = 0;
+			FreeHGlobal(_pClassName);
+			_pClassName = 0;
 		}
 	}
 
@@ -159,65 +168,7 @@ public sealed class Window : Module<Window>, IConfigure
 		return DefWindowProc(hwnd, msg, wParam, lParam);
 	}
 
-	[MethodImpl(MethodImplOptions.AggressiveInlining)] public static uint GetWindowsStyle(HWND hwnd) => (uint)GetWindowLong(hwnd, WINDOW_LONG_PTR_INDEX.GWL_STYLE);
-	[MethodImpl(MethodImplOptions.AggressiveInlining)] public static unsafe void SetTitleBarColor(HWND hwnd, Color color) { var colorRef = (uint)(color.R | (color.G << 8) | (color.B << 16)); DwmSetWindowAttribute(hwnd, DWMWINDOWATTRIBUTE.DWMWA_CAPTION_COLOR, &colorRef, sizeof(uint)); }
-	[MethodImpl(MethodImplOptions.AggressiveInlining)] public static void UnlockCursor() => ClipCursor(default(RECT));
-	[MethodImpl(MethodImplOptions.AggressiveInlining)] public static void ForceHideCursor() { while (ShowCursor(false) >= 0) ; }
-	[MethodImpl(MethodImplOptions.AggressiveInlining)] public static void ForceShowCursor() { while (ShowCursor(true) < 0) ; }
-	[MethodImpl(MethodImplOptions.AggressiveInlining)] public static unsafe void SetWindowTitle(HWND hwnd, string title) { fixed (char* p = title) { SetWindowText(hwnd, new PCWSTR(p)); } }
-	[MethodImpl(MethodImplOptions.AggressiveInlining)] public static unsafe string GetWindowTitle(HWND hwnd) { const int capacity = 256; var buffer = stackalloc char[capacity]; return new string(buffer, 0, GetWindowText(hwnd, new PWSTR(buffer), capacity)); }
-	[MethodImpl(MethodImplOptions.AggressiveInlining)] public static unsafe (int x, int y) GetCursorPosition() { Point p; GetCursorPos(&p); return (p.X, p.Y); }
 
-	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	public static unsafe void CenterWindow(HWND hwnd)
-	{
-		RECT rect;
-		if (!GetWindowRect(hwnd, &rect))
-		{
-			return;
-		}
-
-		var x = ((GetSystemMetrics(SYSTEM_METRICS_INDEX.SM_CXSCREEN) - (rect.right - rect.left))) / 2;
-		var y = ((GetSystemMetrics(SYSTEM_METRICS_INDEX.SM_CYSCREEN) - (rect.bottom - rect.top))) / 2;
-		SetWindowPos(hwnd, HWND.Null, x, y, 0, 0, SET_WINDOW_POS_FLAGS.SWP_NOSIZE | SET_WINDOW_POS_FLAGS.SWP_NOZORDER);
-	}
-
-	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	public static unsafe void LockCursorToWindow(HWND hwnd)
-	{
-		RECT rect;
-		if (!GetClientRect(hwnd, &rect)) return;
-		ClientToScreen(hwnd, (Point*)&rect.left);
-		ClientToScreen(hwnd, (Point*)&rect.right);
-		ClipCursor(&rect);
-	}
-
-	public static unsafe void SetClientSize(HWND hwnd, int width, int height)
-	{
-		RECT rect = new()
-		{
-			left = 0,
-			top = 0,
-			right = width,
-			bottom = height
-		};
-
-		if (!AdjustWindowRect(&rect, (WINDOW_STYLE)GetWindowLong(hwnd, WINDOW_LONG_PTR_INDEX.GWL_STYLE), false))
-		{
-			throw new Win32Exception(GetLastWin32Error());
-		}
-
-		var windowWidth = rect.right - rect.left;
-		var windowHeight = rect.bottom - rect.top;
-
-		var screenWidth = GetSystemMetrics(SYSTEM_METRICS_INDEX.SM_CXSCREEN);
-		var screenHeight = GetSystemMetrics(SYSTEM_METRICS_INDEX.SM_CYSCREEN);
-
-		var x = (screenWidth - windowWidth) / 2;
-		var y = (screenHeight - windowHeight) / 2;
-
-		SetWindowPos(hwnd, HWND.Null, x, y, windowWidth, windowHeight, SET_WINDOW_POS_FLAGS.SWP_NOZORDER);
-	}
 }
 
 [Discoverable]
@@ -230,7 +181,7 @@ public sealed class RawInput : Component<RawInput>, IConfigure
 	private readonly Mouse.State _mState = new();
 	private long _frameId;
 
-	private IWritePort<InputSnapshot> _inputWriter = null!;
+	//private IWritePort<InputSnapshot> _inputWriter = null!;
 
 	private enum RimType : uint
 	{
@@ -256,44 +207,44 @@ public sealed class RawInput : Component<RawInput>, IConfigure
 
 	}
 
-	public override void Start()
+	public override unsafe void Start()
 	{
 		base.Start();
 
-		var inputEndPoint = Context.MessageBus.Claim<InputSnapshot>();
-		_inputWriter = inputEndPoint.Write!;
+		//var inputEndPoint = Context.MessageBus.Claim<InputSnapshot>();
+		//_inputWriter = inputEndPoint.Write!;
 
 		var window = (Window)Owner;
 		var hwnd = window.Hwnd;
 
-		ReadOnlySpan<RAWINPUTDEVICE> rid =
-		[
-			new()
+		RAWINPUTDEVICE* rid = stackalloc RAWINPUTDEVICE[2]
+		{
+			new RAWINPUTDEVICE
 			{
 				usUsagePage = 0x01,
 				usUsage = 0x02,
 				dwFlags = RAWINPUTDEVICE_FLAGS.RIDEV_DEVNOTIFY,
 				hwndTarget = hwnd
 			},
-			new()
+			new RAWINPUTDEVICE
 			{
 				usUsagePage = 0x01,
 				usUsage = 0x06,
 				dwFlags = RAWINPUTDEVICE_FLAGS.RIDEV_DEVNOTIFY | RAWINPUTDEVICE_FLAGS.RIDEV_NOLEGACY,
 				hwndTarget = hwnd
 			}
-		];
+		};
 
-		require(RegisterRawInputDevices(rid, s_rawInputDeviceSize), true);
+		Require(RegisterRawInputDevices(rid, 2u, s_rawInputDeviceSize), true);
 	}
 
 	public unsafe void ProcessRawInput(nint lParam, long timestamp)
 	{
 		uint dwSize = 0;
-		if (GetRawInputData((HRAWINPUT)lParam, RAW_INPUT_DATA_COMMAND_FLAGS.RID_INPUT, null, ref dwSize, s_rawInputHeaderSize) != 0 || dwSize == 0) return;
+		if (GetRawInputData((HRAWINPUT)lParam, RAW_INPUT_DATA_COMMAND_FLAGS.RID_INPUT, null, &dwSize, s_rawInputHeaderSize) != 0 || dwSize == 0) return;
 
 		byte* buf = stackalloc byte[(int)dwSize];
-		if (GetRawInputData((HRAWINPUT)lParam, RAW_INPUT_DATA_COMMAND_FLAGS.RID_INPUT, buf, ref dwSize, s_rawInputHeaderSize) == unchecked((uint)-1)) return;
+		if (GetRawInputData((HRAWINPUT)lParam, RAW_INPUT_DATA_COMMAND_FLAGS.RID_INPUT, buf, &dwSize, s_rawInputHeaderSize) == unchecked((uint)-1)) return;
 
 		var raw = *(RAWINPUT*)buf;
 		switch ((RimType)raw.header.dwType)
@@ -315,10 +266,13 @@ public sealed class RawInput : Component<RawInput>, IConfigure
 		}
 	}
 
+	public override void PreUpdate()
+	{
+
+	}
+
 	public override void Update()
 	{
-		base.Update();
-
 		var now = Time.Now();
 		var kState = _kState.BuildFrameState(now);
 		var mState = _mState.BuildFrameState(now);
@@ -332,8 +286,22 @@ public sealed class RawInput : Component<RawInput>, IConfigure
 			MState = mState
 		};
 
-		_inputWriter.Write(snapshot, Application.TokenSrc.Token);
+		Send(new Stream<InputSnapshot, Input>
+		{
+			Data = snapshot,
+			Target = Module.Registry.Instance.Global.Get<Input>(),
+			Settings = new Settings.Stream
+			{
+				CapacityPow2 = 1024,
+				WaitMode = WaitMode.Hybrid,
+				FullMode = FullMode.Wait,
+				DropMode = DropMode.None
+			}
+		});
+
+		//_inputWriter.Write(snapshot, Application.TokenSrc.Token);
 	}
+
 
 	public override void PostUpdate()
 	{

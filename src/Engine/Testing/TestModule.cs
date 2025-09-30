@@ -1,5 +1,6 @@
 ﻿using Engine.Core;
 using Engine.Core.Lifecycle;
+using Engine.Debug;
 using Engine.Platform.Windows;
 
 namespace Engine.Testing;
@@ -15,7 +16,7 @@ public sealed class TestModule : Module<TestModule>, IConfigure
 		Enabled = true;
 		AllowMultiple = false;
 		Affinity = Affinity.Game;
-		AddDependency<Window>();
+		AddDependency<Input>();
 	}
 
 	public override void Load()
@@ -32,12 +33,8 @@ public sealed class TestModule : Module<TestModule>, IConfigure
 	{
 		base.Start();
 
-		var input = Context.Input;
-
-		_keyboard = input.Keyboard;
-		_mouse = input.Mouse;
-
-		// TODO: Make Input events pass an event struct
+		_keyboard = Context.Keyboard;
+		_mouse = Context.Mouse;
 
 		_keyboard.OnEvent(Keyboard.Key.W, Keyboard.Event.Down) += KeyboardTest;
 		_mouse.OnMove += MouseTest;
@@ -45,12 +42,12 @@ public sealed class TestModule : Module<TestModule>, IConfigure
 
 	private void MouseTest()
 	{
-		//Log.Info($"Mouse Delta: {_mouse.Delta}");
+		Log.Info($"Mouse Delta: {_mouse.Delta}");
 	}
 
 	private void KeyboardTest()
 	{
-		//Log.Info("W Pressed");
+		Log.Info("W Pressed");
 	}
 
 	public override void PreUpdate()
@@ -60,7 +57,7 @@ public sealed class TestModule : Module<TestModule>, IConfigure
 
 	public override void Update()
 	{
-		//Log.Info($"FPS: {Context.Time.Fps}");
+
 	}
 
 	public override void PostUpdate()

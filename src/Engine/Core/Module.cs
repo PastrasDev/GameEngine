@@ -1,6 +1,8 @@
 ﻿using System.Reflection;
 using System.Runtime.CompilerServices;
+using Engine.Core.Extensions;
 using Engine.Core.Lifecycle;
+using Engine.Core.Threading.Messaging;
 using Engine.Debug;
 
 namespace Engine.Core;
@@ -25,9 +27,15 @@ public abstract class Component
 			private Registry() { }
 		}
 	}
+
+	public sealed class Registry : Abstract.Registry<Registry, Component>
+	{
+		public static Registry Instance { get; } = new();
+		private Registry() { }
+	}
 }
 
-public abstract class Component<TSelf> : Component, IPhases where TSelf : Component<TSelf>, IConfigure, new()
+public abstract class Component<TSelf> : Component, IPhases, IMessaging where TSelf : Component<TSelf>, IConfigure, new()
 {
 	protected Module Owner { get; private set; } = null!;
 	protected Context Context { get; private set; } = null!;
@@ -61,17 +69,51 @@ public abstract class Component<TSelf> : Component, IPhases where TSelf : Compon
 		s_dependencyData.Clear();
 	}
 
-	public virtual void Load() => Log.Info($"[Component][{Affinity}] {typeof(TSelf).Name}::Load");
-	public virtual void Initialize() => Log.Info($"[Component][{Affinity}] {typeof(TSelf).Name}::Initialize");
-	public virtual void Start() => Log.Info($"[Component][{Affinity}] {typeof(TSelf).Name}::Start");
+	public virtual void Load() => Log.Info($"[Component][{typeof(TSelf).Name}::Load]");
+	public virtual void Initialize() => Log.Info($"[Component][{typeof(TSelf).Name}::Initialize]");
+	public virtual void Start() => Log.Info($"[Component][{typeof(TSelf).Name}::Start]");
 	public virtual void FixedUpdate() { }
 	public virtual void PostUpdate() { }
 	public virtual void PreUpdate() { }
 	public virtual void Update() { }
-	public virtual void Shutdown() => Log.Info($"[Component][{Affinity}] {typeof(TSelf).Name}::Shutdown");
+	public virtual void Shutdown() => Log.Info($"[Component][{typeof(TSelf).Name}::Shutdown]");
 
-	private static Component Create(Module owner, Context context) => new TSelf { Owner = owner, Context = context };
+
+	private static Component Create(Module owner, Context context)
+	{
+		var self = new TSelf { Owner = owner, Context = context };
+		Registry.Instance.Global.Add(typeof(TSelf), self);
+		return self;
+	}
+
 	protected static void AddDependency<T>() where T : Component<T>, IConfigure, new() => s_dependencyData.Add(Component<T>.Data);
+
+
+	public static void Send<TData, TTarget>(in Snapshot<TData, TTarget> snapshot)
+	{
+		Router<TData, TSelf, TTarget>.Snapshot.Publish(snapshot.Data, snapshot.Settings);
+	}
+
+	public static void Send<TData, TTarget>(in Stream<TData, TTarget> stream)
+	{
+		Router<TData, TSelf, TTarget>.Stream.Write(stream.Data, stream.Settings, Application.TokenSrc.Token);
+	}
+
+	public static TData Receive<TData, TSender>() where TData : notnull where TSender : class
+	{
+		return Router<TData, TSender, TSelf>.Stream.TryRead(out var item) ? item : Router<TData, TSender, TSelf>.Snapshot.Read().value;
+	}
+
+	public static bool TryReceive<TData, TSender>(out TData? data) where TData : notnull where TSender : class
+	{
+		if (Router<TData, TSender, TSelf>.Stream.TryRead(out var item))
+		{
+			data = item;
+			return true;
+		}
+		data = default;
+		return false;
+	}
 }
 
 public abstract class Module
@@ -89,7 +131,7 @@ public abstract class Module
 		public required Component.Metadata[] Components { get; init; }
 		public required Thunk[] Thunks { get; init; }
 		public required Phase Mask { get; init; }
-		public unsafe required delegate* managed<object, object> Instantiate { get; init; }
+		public unsafe required delegate* managed<Context, object> Instantiate { get; init; }
 
 		[MethodImpl(MethodImplOptions.AggressiveInlining)]
 		public void Register() => Registry.Instance.Global.Add(Type, this);
@@ -100,9 +142,15 @@ public abstract class Module
 			private Registry() { }
 		}
 	}
+
+	public sealed class Registry : Abstract.Registry<Registry, Module>
+	{
+		public static Registry Instance { get; } = new();
+		private Registry() { }
+	}
 }
 
-public abstract class Module<TSelf> : Module, IPhases, IThunks<TSelf> where TSelf : Module<TSelf>, IConfigure, new()
+public abstract class Module<TSelf> : Module, IPhases, IMessaging, IThunks<TSelf> where TSelf : Module<TSelf>, IConfigure, new()
 {
 	protected static bool Enabled { get; set; }
 	protected static bool AllowMultiple { get; set; }
@@ -172,14 +220,14 @@ public abstract class Module<TSelf> : Module, IPhases, IThunks<TSelf> where TSel
 		s_componentData.Clear();
 	}
 
-	public virtual void Load() => Log.Info($"[Module][{Affinity}] {typeof(TSelf).Name}::Load");
-	public virtual void Initialize() => Log.Info($"[Module][{Affinity}] {typeof(TSelf).Name}::Initialize");
-	public virtual void Start() => Log.Info($"[Module][{Affinity}] {typeof(TSelf).Name}::Start");
+	public virtual void Load() => Log.Info($"[Module][{typeof(TSelf).Name}::Load]");
+	public virtual void Initialize() => Log.Info($"[Module][{typeof(TSelf).Name}::Initialize]");
+	public virtual void Start() => Log.Info($"[Module][{typeof(TSelf).Name}::Start]");
 	public virtual void FixedUpdate() { }
 	public virtual void PostUpdate() { }
 	public virtual void PreUpdate() { }
 	public virtual void Update() { }
-	public virtual void Shutdown() => Log.Info($"[Module][{Affinity}] {typeof(TSelf).Name}::Shutdown");
+	public virtual void Shutdown() => Log.Info($"[Module][{typeof(TSelf).Name}::Shutdown]");
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	protected T GetComponent<T>() where T : Component => TryGetComponent(out T component) ? component : throw new InvalidOperationException($"Component of type {typeof(T).Name} not found in module {typeof(TSelf).Name}.");
@@ -204,7 +252,12 @@ public abstract class Module<TSelf> : Module, IPhases, IThunks<TSelf> where TSel
 		return found is { };
 	}
 
-	private static object Create(object context) => new TSelf { Context = (Context)context };
+	private static object Create(Context context)
+	{
+		var self = new TSelf { Context = context };
+		Registry.Instance.Global.Add(typeof(TSelf), self);
+		return self;
+	}
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	protected int GetComponents<T>(List<T> buffer) where T : Component
@@ -229,6 +282,34 @@ public abstract class Module<TSelf> : Module, IPhases, IThunks<TSelf> where TSel
 			throw new InvalidOperationException($"Component {metadata.Type.Name} does not allow multiple instances in a single module.");
 
 		s_componentData.Add(metadata);
+	}
+
+
+	public static void Send<TData, TTarget>(in Snapshot<TData, TTarget> snapshot)
+	{
+		Router<TData, TSelf, TTarget>.Snapshot.Publish(snapshot.Data, snapshot.Settings);
+	}
+
+	public static void Send<TData, TTarget>(in Stream<TData, TTarget> stream)
+	{
+		Router<TData, TSelf, TTarget>.Stream.Write(stream.Data, stream.Settings, Application.TokenSrc.Token);
+	}
+
+	public static TData Receive<TData, TSender>() where TData : notnull where TSender : class
+	{
+		return Router<TData, TSender, TSelf>.Stream.TryRead(out var item) ? item : Router<TData, TSender, TSelf>.Snapshot.Read().value;
+	}
+
+	public static bool TryReceive<TData, TSender>(out TData? data) where TData : notnull where TSender : class
+	{
+		if (Router<TData, TSender, TSelf>.Stream.TryRead(out var item))
+		{
+			data = item;
+			return true;
+		}
+
+		data = default;
+		return false;
 	}
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
