@@ -3,11 +3,7 @@
         
     </PropertyGroup>
     <ItemGroup Condition="'$(MathUsings)'=='true' and Exists('$(MSBuildThisFileDirectory)MathAliases.cs')">
-        <Using Include="Engine.Mathematics.Math" Static="True" />
+        <Using Include="Vyrse.Mathematics.Math" Static="True" />
         <Compile Include="$(MSBuildThisFileDirectory)MathAliases.cs" />
     </ItemGroup>
-    <ItemGroup Condition="'$(RequireUsings)'=='true'">
-        <Using Include="Engine.Core.RequireUtils" Static="True" />
-    </ItemGroup>
-
 </Project>

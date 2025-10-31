@@ -1,0 +1,27 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<doc>
+    <members>
+        <member name="T:Windows.Win32.Foundation.RECT">
+            <summary>
+                A <see href="https://learn.microsoft.com/en-us/windows/win32/api/windef/ns-windef-rect">RECT</see> is a structure that defines a rectangle by the coordinates of its upper-left and lower-right corners.
+                <list type="bullet">
+                    <item><description><c>Left</c> The <i>x</i>-coordinate of the upper-left corner.</description></item>
+                    <item><description><c>Top</c> The <i>y</i>-coordinate of the upper-left corner.</description></item>
+                    <item><description><c>Right</c> The <i>x</i>-coordinate of the lower-right corner.</description></item>
+                    <item><description><c>Bottom</c> The <i>y</i>-coordinate of the lower-right corner.</description></item>
+                </list>
+            </summary>
+            <remarks>
+                This type is declared in <see href="https://learn.microsoft.com/en-us/windows/win32/api/windef/">WinDef.h</see> as follows:
+                <code>
+                    typedef struct tagRECT {
+                        LONG left;
+                        LONG top;
+                        LONG right;
+                        LONG bottom;
+                    } RECT, *PRECT, *NPRECT, *LPRECT;
+                </code>
+            </remarks>
+        </member>
+    </members>
+</doc>

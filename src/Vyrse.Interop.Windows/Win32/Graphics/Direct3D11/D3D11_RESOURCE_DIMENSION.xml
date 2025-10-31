@@ -1,0 +1,29 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<doc>
+    <members>
+        <member name="T:Windows.Win32.Graphics.Direct3D11.D3D11_RESOURCE_DIMENSION">
+            <summary>
+                The <see href="https://learn.microsoft.com/en-us/windows/win32/api/d3d11/ne-d3d11-d3d11_resource_dimension">D3D11_RESOURCE_DIMENSION</see> identifies the type of resource being used.
+                <list type="bullet">
+                    <item><description><c>D3D11_RESOURCE_DIMENSION_UNKNOWN</c> Resource is of unknown type.</description></item>
+                    <item><description><c>D3D11_RESOURCE_DIMENSION_BUFFER</c> Resource is a buffer.</description></item>
+                    <item><description><c>D3D11_RESOURCE_DIMENSION_TEXTURE1D</c> Resource is a 1D texture.</description></item>
+                    <item><description><c>D3D11_RESOURCE_DIMENSION_TEXTURE2D</c> Resource is a 2D texture.</description></item>
+                    <item><description><c>D3D11_RESOURCE_DIMENSION_TEXTURE3D</c> Resource is a 3D texture.</description></item>
+                </list>
+            </summary>
+            <remarks>
+                This type is declared in <see href="https://learn.microsoft.com/en-us/windows/win32/api/d3d11/">D3d11.h</see> as:
+                <code>
+                    typedef enum D3D11_RESOURCE_DIMENSION {
+                        D3D11_RESOURCE_DIMENSION_UNKNOWN = 0,
+                        D3D11_RESOURCE_DIMENSION_BUFFER = 1,
+                        D3D11_RESOURCE_DIMENSION_TEXTURE1D = 2,
+                        D3D11_RESOURCE_DIMENSION_TEXTURE2D = 3,
+                        D3D11_RESOURCE_DIMENSION_TEXTURE3D = 4
+                    } ;
+                </code>
+            </remarks>
+        </member>
+    </members>
+</doc>

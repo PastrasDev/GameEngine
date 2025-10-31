@@ -1,0 +1,14 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<doc>
+    <members>
+        <member name="T:Windows.Win32.Foundation.HANDLE">
+            <summary>
+                A <see href="https://learn.microsoft.com/en-us/windows/win32/winprog/windows-data-types#HANDLE">HANDLE</see> is an opaque reference used by the operating system to identify resources such as files, windows, events, threads, or registry keys.
+            </summary>
+            <remarks>
+                Applications should not assume that handle values are pointers or have any particular numeric meaning.<para/>
+                This type is declared in <see href="https://learn.microsoft.com/en-us/windows/win32/api/winnt/">WinNT.h</see> as follows: <c>typedef PVOID HANDLE;</c>
+            </remarks>
+        </member>
+    </members>
+</doc>

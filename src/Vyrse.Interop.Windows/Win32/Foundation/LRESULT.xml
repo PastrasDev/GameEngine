@@ -1,0 +1,16 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<doc>
+    <members>
+        <member name="T:Windows.Win32.Foundation.LRESULT">
+            <summary>
+                A <see href="https://learn.microsoft.com/en-us/windows/win32/winprog/windows-data-types#LRESULT">LRESULT</see> is a signed integer type that defines the result of a window procedure (window message handler).
+            </summary>
+            <remarks>
+                Window procedures return an <c>LRESULT</c> value to indicate the outcome of message processing. The meaning of this value depends on the message sent to the window.<para/>
+                On 64-bit Windows, <c>LRESULT</c> is defined as a 64-bit signed integer (<c>LONG_PTR</c>).
+                On 32-bit Windows, it is a 32-bit signed integer (<c>LONG</c>).<para/>
+                This type is declared in <see href="https://learn.microsoft.com/en-us/windows/win32/api/windef/">WinDef.h</see> as follows: <c>typedef LONG_PTR LRESULT;</c>
+            </remarks>
+        </member>
+    </members>
+</doc>

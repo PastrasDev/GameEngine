@@ -1,0 +1,22 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+    
+    <PropertyGroup>
+        <TargetFramework>net9.0-windows</TargetFramework>
+        <MathUsings>true</MathUsings>
+        <RequireUsings>true</RequireUsings>
+        <DisableRuntimeMarshalling>true</DisableRuntimeMarshalling>
+        <NoWarn>$(NoWarn);CA2255</NoWarn>
+        <OutputType>WinExe</OutputType>
+        <NeutralLanguage>en-US</NeutralLanguage>
+        <ApplicationManifest>app.manifest</ApplicationManifest>
+    </PropertyGroup>
+    
+    <ItemGroup>
+        <PackageReference Include="JetBrains.Annotations" Version="2025.2.2" />
+    </ItemGroup>
+    
+    <ItemGroup>
+      <ProjectReference Include="..\Vyrse.Interop.Windows\Vyrse.Interop.Windows.csproj" />
+    </ItemGroup>
+
+</Project>

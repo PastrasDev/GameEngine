@@ -1,0 +1,53 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<doc>
+    <members>
+        <member name="M:Vyrse.Interop.Windows.Win32.Winuser.SetProcessDpiAwarenessContext(Windows.Win32.UI.HiDpi.DPI_AWARENESS_CONTEXT)">
+            <summary>
+                <see href="https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-setprocessdpiawarenesscontext">SetProcessDpiAwarenessContext</see>
+                Sets the current process to a specified dots-per-inch (DPI) awareness context.
+                The DPI awareness contexts are defined by
+                <see cref="T:Windows.Win32.UI.HiDpi.DPI_AWARENESS_CONTEXT"/> values.
+            </summary>
+
+            <param name="value">
+                A <c>DPI_AWARENESS_CONTEXT</c> handle that specifies the DPI awareness context to set.
+            </param>
+
+            <returns>
+                This function returns <c>true</c> if the operation was successful, and <c>false</c> otherwise.
+                To get extended error information, call
+                <see cref="M:System.Runtime.InteropServices.Marshal.GetLastWin32Error"/>.
+                <para/>
+                Possible errors include:
+                <b>ERROR_INVALID_PARAMETER</b> for an invalid input, and
+                <b>ERROR_ACCESS_DENIED</b> if the default DPI awareness mode for the process has already been set
+                (via a previous API call or within the application manifest).
+                <para/>
+            </returns>
+
+            <remarks>
+                This API is a more advanced version of the previously existing
+                <see href="https://learn.microsoft.com/en-us/windows/win32/api/shellscalingapi/nf-shellscalingapi-setprocessdpiawareness">SetProcessDpiAwareness</see> API,
+                allowing for the process default to be set to the finer-grained
+                <see href="https://learn.microsoft.com/en-us/windows/win32/hidpi/dpi-awareness-context">DPI_AWARENESS_CONTEXT</see> values.
+                <para/>
+                Most importantly, this allows you to programmatically set <b>Per Monitor v2</b> as the process default value,
+                which is not possible with the previous API.
+                <para/>
+                This method sets the default
+                <see href="https://learn.microsoft.com/en-us/windows/win32/hidpi/dpi-awareness-context">DPI_AWARENESS_CONTEXT</see>
+                for all threads within an application.
+                <para/>
+                Individual threads can have their DPI awareness changed from the default with the
+                <see href="https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-setthreaddpiawarenesscontext">SetThreadDpiAwarenessContext</see> method.
+                <para/>
+                You must call this API before you call any APIs that depend on the DPI awareness (including before creating any UI in your process).
+                <para/>
+                Once DPI awareness is set for an app, any future calls to this API will fail.
+                This is true regardless of whether you set the DPI awareness in the manifest or by using this API.
+                <para/>
+                If the DPI awareness level is not set, the default value is <b>DPI_AWARENESS_CONTEXT_UNAWARE</b>.
+            </remarks>
+        </member>
+    </members>
+</doc>

@@ -1,0 +1,8 @@
+﻿namespace Windows.Win32.Graphics.Direct3D11;
+
+[Flags]
+public enum D3D11_CPU_ACCESS_FLAG
+{
+	D3D11_CPU_ACCESS_WRITE = 0x00010000,
+	D3D11_CPU_ACCESS_READ = 0x00020000,
+}

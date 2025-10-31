@@ -1,0 +1,14 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<doc>
+    <members>
+        <member name="T:Windows.Win32.Foundation.HRESULT">
+            <summary>
+                An <see href="https://learn.microsoft.com/en-us/windows/win32/winprog/windows-data-types#HRESULT">HRESULT</see> is a 32-bit status code used in Win32/COM to represent success, failure, or informational results.
+            </summary>
+            <remarks>
+                The high-order bit indicates severity (0 = success, 1 = failure). Bits 16-26 encode the facility (origin of the code), and bits 0-15 encode the specific error or status code.<para/>
+                This type is declared in <see href="https://learn.microsoft.com/en-us/windows/win32/api/winnt/">WinNT.h</see> as follows: <c>typedef LONG HRESULT;</c>
+            </remarks>
+        </member>
+    </members>
+</doc>

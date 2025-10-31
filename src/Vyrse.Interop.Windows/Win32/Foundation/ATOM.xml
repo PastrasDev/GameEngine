@@ -1,0 +1,13 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<doc>
+    <members>
+        <member name="T:Windows.Win32.Foundation.ATOM">
+            <summary>
+                An <see href="https://learn.microsoft.com/en-us/windows/win32/winprog/windows-data-types#ATOM">ATOM</see> is a 16-bit integer that identifies a string in a global atom table.
+            </summary>
+            <remarks>
+                This type is declared in <see href="https://learn.microsoft.com/en-us/windows/win32/api/windef/">WinDef.h</see> as follows: <c>typedef WORD ATOM;</c>
+            </remarks>
+        </member>
+    </members>
+</doc>

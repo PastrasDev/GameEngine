@@ -3,6 +3,7 @@
         <TargetFramework>net8.0-windows</TargetFramework>
         <PlatformTarget>x64</PlatformTarget>
         <LangVersion>preview</LangVersion>
+        <ImplicitUsings>enable</ImplicitUsings>
         <Nullable>enable</Nullable>
         <ImplicitUsings>false</ImplicitUsings>
         <Deterministic>true</Deterministic>
@@ -23,7 +24,6 @@
         <_Src>$(_Root)src\</_Src>
         
         <MathUsings Condition="'$(MathUsings)'==''">false</MathUsings>
-        <RequireUsings Condition="'$(RequireUsings)'==''">false</RequireUsings>
     </PropertyGroup>
     
     <PropertyGroup Condition="'$(Configuration)'=='Debug'"> 
@@ -37,7 +37,7 @@
         <InvariantGlobalization>false</InvariantGlobalization> 
     </PropertyGroup>
 
-    <ItemGroup Condition="'$(MSBuildProjectName)' != 'Engine.Analyzers'">
-        <ProjectReference Include="$(MSBuildThisFileDirectory)src\Engine.Analyzers\Engine.Analyzers.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
+    <ItemGroup Condition="'$(MSBuildProjectName)' != 'Vyrse.Analyzers'">
+        <ProjectReference Include="$(MSBuildThisFileDirectory)src\Vyrse.Analyzers\Vyrse.Analyzers.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
     </ItemGroup>
 </Project>

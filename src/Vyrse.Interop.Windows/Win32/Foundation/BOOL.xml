@@ -1,0 +1,13 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<doc>
+    <members>
+        <member name="T:Windows.Win32.Foundation.BOOL">
+            <summary>
+                A <see href="https://learn.microsoft.com/en-us/windows/win32/winprog/windows-data-types#BOOL">BOOL</see> is a <c>boolean</c> variable that can either be <c>true</c> or <c>false</c>.
+            </summary>
+            <remarks>
+                This type is declared in <see href="https://learn.microsoft.com/en-us/windows/win32/api/windef/">WinDef.h</see> as follows: <c>typedef int BOOL;</c>
+            </remarks>
+        </member>
+    </members>
+</doc>
