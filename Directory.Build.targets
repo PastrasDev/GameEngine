@@ -1,9 +1,15 @@
 <Project>
-    <PropertyGroup> 
-        
-    </PropertyGroup>
+
     <ItemGroup Condition="'$(MathUsings)'=='true' and Exists('$(MSBuildThisFileDirectory)MathAliases.cs')">
-        <Using Include="Vyrse.Mathematics.Math" Static="True" />
         <Compile Include="$(MSBuildThisFileDirectory)MathAliases.cs" />
     </ItemGroup>
+
+<!--    <ItemGroup>-->
+<!--        <Compile Include="$(IntermediateOutputPath)Generated\**\*.g.cs" Visible="false" AutoGen="True" DesignTime="True" />-->
+<!--    </ItemGroup>-->
+
+<!--    <Target Name="VyrseEnsureGenDir" BeforeTargets="CoreCompile">-->
+<!--        <MakeDir Directories="$(IntermediateOutputPath)Generated\" />-->
+<!--    </Target>-->
+
 </Project>

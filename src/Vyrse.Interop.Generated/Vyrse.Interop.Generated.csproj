@@ -1,0 +1,35 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+    <PropertyGroup>
+        <RootNamespace>Vyrse.Interop.Generated</RootNamespace>
+        <TargetFramework>net10.0</TargetFramework>
+        <ImplicitUsings>enable</ImplicitUsings>
+        <Nullable>enable</Nullable>
+        <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+        <LangVersion>preview</LangVersion>
+        <PublishAot>false</PublishAot>
+        <DisableRuntimeMarshalling>true</DisableRuntimeMarshalling>
+        <CsWin32RunAsBuildTask>false</CsWin32RunAsBuildTask>
+        <EmitCompilerGeneratedFiles>true</EmitCompilerGeneratedFiles>
+        <CompilerGeneratedFilesOutputPath>$(BaseIntermediateOutputPath)Generated</CompilerGeneratedFilesOutputPath>
+    </PropertyGroup>
+
+    <PropertyGroup Condition="'$(Configuration)'=='Debug'">
+        <Optimize>false</Optimize>
+        <DebugType>portable</DebugType>
+        <IlcGenerateStackTraceData>true</IlcGenerateStackTraceData>
+    </PropertyGroup>
+
+    <PropertyGroup Condition="'$(Configuration)'=='Release'">
+        <Optimize>true</Optimize>
+        <InvariantGlobalization>false</InvariantGlobalization>
+    </PropertyGroup>
+
+    <ItemGroup>
+      <PackageReference Include="Microsoft.Windows.CsWin32" Version="0.3.264">
+        <PrivateAssets>all</PrivateAssets>
+        <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+      </PackageReference>
+    </ItemGroup>
+
+</Project>

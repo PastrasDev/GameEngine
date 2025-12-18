@@ -1,22 +1,49 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
-    
-    <PropertyGroup>
-        <TargetFramework>net9.0-windows</TargetFramework>
-        <MathUsings>true</MathUsings>
-        <RequireUsings>true</RequireUsings>
-        <DisableRuntimeMarshalling>true</DisableRuntimeMarshalling>
-        <NoWarn>$(NoWarn);CA2255</NoWarn>
-        <OutputType>WinExe</OutputType>
-        <NeutralLanguage>en-US</NeutralLanguage>
-        <ApplicationManifest>app.manifest</ApplicationManifest>
+
+    <PropertyGroup Condition="'$(Configuration)'=='Debug'">
+        <Optimize>false</Optimize>
+        <DebugType>portable</DebugType>
+        <IlcGenerateStackTraceData>true</IlcGenerateStackTraceData>
     </PropertyGroup>
-    
+
+    <PropertyGroup Condition="'$(Configuration)'=='Release'">
+        <Optimize>true</Optimize>
+        <InvariantGlobalization>false</InvariantGlobalization>
+    </PropertyGroup>
+
+    <PropertyGroup>
+        <RootNamespace>Vyrse</RootNamespace>
+        <TargetFramework>net10.0</TargetFramework>
+        <PlatformTarget>x64</PlatformTarget>
+        <OutputType>Library</OutputType>
+        <LangVersion>preview</LangVersion>
+        <ImplicitUsings>false</ImplicitUsings>
+        <Deterministic>true</Deterministic>
+        <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+        <AnalysisLevel>latest</AnalysisLevel>
+        <DisableRuntimeMarshalling>true</DisableRuntimeMarshalling>
+        <Nullable>enable</Nullable>
+        <EnablePreviewFeatures>true</EnablePreviewFeatures>
+        <MathUsings>false</MathUsings>
+        <TieredPGO>true</TieredPGO>
+        <PublishAot>false</PublishAot>
+        <PublishTrimmed>false</PublishTrimmed>
+        <NoWarn>$(NoWarn);RS1036;</NoWarn>
+    </PropertyGroup>
+
     <ItemGroup>
-        <PackageReference Include="JetBrains.Annotations" Version="2025.2.2" />
-    </ItemGroup>
-    
-    <ItemGroup>
-      <ProjectReference Include="..\Vyrse.Interop.Windows\Vyrse.Interop.Windows.csproj" />
+        <PackageReference Include="JetBrains.Annotations" Version="2025.2.4" />
+        <ProjectReference Include="..\Vyrse.Interop.Cef\Vyrse.Interop.Cef.csproj" />
+        <ProjectReference Include="..\Vyrse.Interop.Windows\Vyrse.Interop.Windows.csproj"/>
     </ItemGroup>
 
+    <ItemGroup>
+        <Using Include="Vyrse.Global" Static="True"/>
+    </ItemGroup>
+
+    <ItemGroup>
+      <Compile Remove="src\Tools\ComGuidHarvester.cs" />
+      <None Include="src\Tools\ComGuidHarvester.cs" />
+    </ItemGroup>
+    
 </Project>

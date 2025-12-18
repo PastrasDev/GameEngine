@@ -1,0 +1,68 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+    <PropertyGroup>
+        <RootNamespace>Windows</RootNamespace>
+        <TargetFramework>net10.0</TargetFramework>
+        <Nullable>enable</Nullable>
+        <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+        <DisableRuntimeMarshalling>true</DisableRuntimeMarshalling>
+        <LangVersion>preview</LangVersion>
+        <ImplicitUsings>enable</ImplicitUsings>
+        <GenerateDocumentationFile>true</GenerateDocumentationFile>
+        <DocumentationFile>$(TargetDir)$(AssemblyName).xml</DocumentationFile>
+        <NoWarn>$(NoWarn);CS1591</NoWarn>
+        <NoWarn>$(NoWarn);RS1036;</NoWarn>
+    </PropertyGroup>
+
+    <PropertyGroup Condition="'$(Configuration)'=='Debug'">
+        <Optimize>false</Optimize>
+        <DebugType>portable</DebugType>
+        <IlcGenerateStackTraceData>true</IlcGenerateStackTraceData>
+    </PropertyGroup>
+
+    <PropertyGroup Condition="'$(Configuration)'=='Release'">
+        <Optimize>true</Optimize>
+        <InvariantGlobalization>false</InvariantGlobalization>
+    </PropertyGroup>
+    
+    <ItemGroup>
+        <ProjectReference Include="..\Vyrse.Interop.Generated\Vyrse.Interop.Generated.csproj" />
+        <PackageReference Include="Microsoft.CodeAnalysis.Analyzers" Version="3.11.0" PrivateAssets="all" />
+        <PackageReference Include="Microsoft.CodeAnalysis.CSharp" Version="5.0.0" PrivateAssets="all" />
+        <PackageReference Include="Microsoft.Windows.SDK.Win32Metadata" Version="66.0.5-preview" PrivateAssets="all" />
+        <PackageReference Include="JetBrains.Annotations" Version="2025.2.4" />
+    </ItemGroup>
+    
+    <ItemGroup>
+      <Compile Remove="src\Win32\Graphics\Direct3D11\D3D11Buffer.cs" />
+      <None Include="src\Win32\Graphics\Direct3D11\D3D11Buffer.cs" />
+      <Compile Remove="src\Win32\Graphics\Direct3D11\D3D11DepthStencilView.cs" />
+      <None Include="src\Win32\Graphics\Direct3D11\D3D11DepthStencilView.cs" />
+      <Compile Remove="src\Win32\Graphics\Direct3D11\D3D11Device.cs" />
+      <None Include="src\Win32\Graphics\Direct3D11\D3D11Device.cs" />
+      <Compile Remove="src\Win32\Graphics\Direct3D11\D3D11DeviceChild.cs" />
+      <None Include="src\Win32\Graphics\Direct3D11\D3D11DeviceChild.cs" />
+      <Compile Remove="src\Win32\Graphics\Direct3D11\D3D11DeviceContext.cs" />
+      <None Include="src\Win32\Graphics\Direct3D11\D3D11DeviceContext.cs" />
+      <Compile Remove="src\Win32\Graphics\Direct3D11\D3D11RenderTargetView.cs" />
+      <None Include="src\Win32\Graphics\Direct3D11\D3D11RenderTargetView.cs" />
+      <Compile Remove="src\Win32\Graphics\Direct3D11\D3D11Resource.cs" />
+      <None Include="src\Win32\Graphics\Direct3D11\D3D11Resource.cs" />
+      <Compile Remove="src\Win32\Graphics\Direct3D11\D3D11Texture2D.cs" />
+      <None Include="src\Win32\Graphics\Direct3D11\D3D11Texture2D.cs" />
+      <Compile Remove="src\Win32\Graphics\Direct3D11\D3D11View.cs" />
+      <None Include="src\Win32\Graphics\Direct3D11\D3D11View.cs" />
+      <Compile Remove="src\Win32\Graphics\Dxgi\DXGIAdapter.cs" />
+      <None Include="src\Win32\Graphics\Dxgi\DXGIAdapter.cs" />
+      <Compile Remove="src\Win32\Graphics\Dxgi\DXGIObject.cs" />
+      <None Include="src\Win32\Graphics\Dxgi\DXGIObject.cs" />
+      <Compile Remove="src\Win32\Graphics\Dxgi\DXGIOutput.cs" />
+      <None Include="src\Win32\Graphics\Dxgi\DXGIOutput.cs" />
+      <Compile Remove="src\Input\GameInput\v3\GameInput.cs" />
+      <None Include="src\Input\GameInput\v3\GameInput.cs" />
+    </ItemGroup>
+    
+    <ItemGroup>
+      <Folder Include="src\Generated\" />
+    </ItemGroup>
+
+</Project>

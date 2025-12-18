@@ -1,0 +1,35 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+    <PropertyGroup>
+        <RootNamespace>Vyrse.Roslyn.Generators</RootNamespace>
+        <TargetFramework>net10.0</TargetFramework>
+        <ImplicitUsings>enable</ImplicitUsings>
+        <Nullable>enable</Nullable>
+        <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+        <DisableRuntimeMarshalling>true</DisableRuntimeMarshalling>
+        <LangVersion>preview</LangVersion>
+        <EnablePreviewFeatures>true</EnablePreviewFeatures>
+        <EnforceExtendedAnalyzerRules>true</EnforceExtendedAnalyzerRules>
+        <CodeAnalysisTreatWarningsAsErrors>false</CodeAnalysisTreatWarningsAsErrors>
+    </PropertyGroup>
+    
+    <ItemGroup>
+      <PackageReference Include="JetBrains.Annotations" Version="2025.2.4" />
+      <PackageReference Include="Microsoft.CodeAnalysis.Analyzers" Version="3.11.0"/>
+      <PackageReference Include="Microsoft.CodeAnalysis.CSharp" Version="5.0.0" />
+      <PackageReference Include="Portable.Xaml" Version="0.26.0" />
+    </ItemGroup>
+
+    <ItemGroup>
+      <Compile Remove="Code.cs" />
+      <Compile Remove="ComponentGenerator.cs" />
+      <Compile Remove="ComInterfaceGenerator.cs" />
+    </ItemGroup>
+
+    <ItemGroup>
+      <None Include="src\Code.cs" />
+      <Compile Remove="src\ComInterface.Generator.cs" />
+      <None Include="src\ComInterface.Generator.cs" />
+    </ItemGroup>
+
+</Project>
